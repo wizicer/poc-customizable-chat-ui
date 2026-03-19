@@ -5,6 +5,7 @@ import { Sun, Moon, Monitor, Plus, Trash2, Eye, EyeOff, Info } from "lucide-reac
 import { useState } from "react";
 import type { Theme } from "@/types";
 import { getDefaultModelForProvider } from "@/lib/providers";
+import { DEFAULT_PROXY_URL } from "@/lib/proxy";
 
 export function SettingsPage() {
   const { theme, setTheme, apiKeys, addApiKey, updateApiKey, removeApiKey } =
@@ -92,9 +93,18 @@ export function SettingsPage() {
                   key: "",
                   provider: "openai",
                   model: getDefaultModelForProvider("openai"),
+                  useProxy: false,
+                  proxyUrl: DEFAULT_PROXY_URL,
                 }}
                 onSubmit={(values) => {
-                  addApiKey(values.name, values.key, values.provider, values.model);
+                  addApiKey(
+                    values.name,
+                    values.key,
+                    values.provider,
+                    values.model,
+                    values.useProxy,
+                    values.proxyUrl
+                  );
                   setShowAddKey(false);
                 }}
                 onCancel={() => setShowAddKey(false)}
@@ -118,6 +128,8 @@ export function SettingsPage() {
                         key: k.key,
                         provider: k.provider,
                         model: k.model,
+                        useProxy: k.useProxy,
+                        proxyUrl: k.proxyUrl,
                       }}
                       onSubmit={(values) => {
                         updateApiKey(k.id, values);
@@ -133,6 +145,9 @@ export function SettingsPage() {
                           <p className="text-sm font-medium truncate">{k.name}</p>
                           <p className="text-xs text-muted-foreground truncate">
                             {k.provider} · {k.model}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {k.useProxy ? `Proxy · ${k.proxyUrl}` : "Direct browser request"}
                           </p>
                           <p className="text-xs text-muted-foreground truncate mt-1">
                             {visibleKeys.has(k.id)

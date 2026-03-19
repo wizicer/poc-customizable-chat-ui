@@ -1,3 +1,5 @@
+import { DEFAULT_PROXY_URL } from "@/lib/proxy";
+
 export interface LLMRequestMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -9,17 +11,74 @@ export interface LLMStreamCallbacks {
   onError: (error: Error) => void;
 }
 
+export interface LLMTransportOptions {
+  useProxy?: boolean;
+  proxyUrl?: string;
+}
+
+function extractErrorMessage(rawText: string) {
+  const text = rawText.trim();
+  if (!text) return "";
+
+  try {
+    const parsed = JSON.parse(text) as {
+      error?: { message?: string } | string;
+      message?: string;
+      detail?: string;
+    };
+
+    if (typeof parsed.error === "string") return parsed.error;
+    if (parsed.error?.message) return parsed.error.message;
+    if (parsed.message) return parsed.message;
+    if (parsed.detail) return parsed.detail;
+  } catch {
+    return text;
+  }
+
+  return text;
+}
+
+function isLikelyCorsFailure(error: Error) {
+  const message = error.message.toLowerCase();
+  return (
+    error instanceof TypeError &&
+    (message.includes("failed to fetch") ||
+      message.includes("load failed") ||
+      message.includes("networkerror") ||
+      message.includes("fetch failed"))
+  );
+}
+
+function createFriendlyError(error: Error, context: { provider: string; useProxy: boolean; proxyUrl: string }) {
+  if (isLikelyCorsFailure(error)) {
+    if (context.useProxy) {
+      return new Error(
+        `Unable to reach the proxy server at ${context.proxyUrl}. Make sure the local proxy is running and reachable. This often happens when the proxy server is not started, the URL is wrong, or another app is blocking the port.`
+      );
+    }
+
+    return new Error(
+      `The browser could not call the ${context.provider} API directly. This is usually caused by CORS restrictions from the provider. Enable \`Use proxy\` in Settings to send the request through a trusted server instead.`
+    );
+  }
+
+  return error;
+}
+
 export async function streamChatCompletion(
   apiKey: string,
   provider: string,
   model: string,
   messages: LLMRequestMessage[],
   callbacks: LLMStreamCallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: LLMTransportOptions
 ) {
   const normalizedProvider = provider.trim().toLowerCase();
   const isAnthropic = normalizedProvider === "anthropic";
   const isGemini = normalizedProvider === "gemini";
+  const useProxy = options?.useProxy ?? false;
+  const proxyUrl = options?.proxyUrl?.trim() || DEFAULT_PROXY_URL;
 
   let url: string;
   let headers: Record<string, string>;
@@ -79,21 +138,34 @@ export async function streamChatCompletion(
       provider: normalizedProvider,
       model,
       url,
+      useProxy,
+      proxyUrl: useProxy ? proxyUrl : undefined,
       messageCount: messages.length,
       roles: messages.map((message) => message.role),
     });
 
-    const res = await fetch(url, {
+    const requestUrl = useProxy ? proxyUrl : url;
+    const requestHeaders = useProxy ? { "Content-Type": "application/json" } : headers;
+    const requestBody = useProxy
+      ? {
+          url,
+          method: "POST",
+          headers,
+          body,
+        }
+      : body;
+
+    const res = await fetch(requestUrl, {
       method: "POST",
-      headers,
-      body: JSON.stringify(body),
+      headers: requestHeaders,
+      body: JSON.stringify(requestBody),
       signal,
     });
 
     console.debug("[llm] response", {
       provider: normalizedProvider,
       model,
-      url,
+      url: requestUrl,
       status: res.status,
       ok: res.ok,
     });
@@ -101,7 +173,12 @@ export async function streamChatCompletion(
     if (!res.ok) {
       const errText = await res.text();
       console.error("[llm] response error", errText);
-      throw new Error(`API Error ${res.status}: ${errText}`);
+      const detail = extractErrorMessage(errText);
+      throw new Error(
+        detail
+          ? `API Error ${res.status}: ${detail}`
+          : `API Error ${res.status}: The ${normalizedProvider} request failed.`
+      );
     }
 
     const reader = res.body?.getReader();
@@ -155,6 +232,13 @@ export async function streamChatCompletion(
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;
     console.error("[llm] request failed", err);
-    callbacks.onError(err instanceof Error ? err : new Error(String(err)));
+    const baseError = err instanceof Error ? err : new Error(String(err));
+    callbacks.onError(
+      createFriendlyError(baseError, {
+        provider: normalizedProvider,
+        useProxy,
+        proxyUrl,
+      })
+    );
   }
 }

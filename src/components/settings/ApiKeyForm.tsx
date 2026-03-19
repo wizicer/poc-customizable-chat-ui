@@ -1,11 +1,15 @@
 import { useMemo, useState } from "react";
 import { getDefaultModelForProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/providers";
+import { DEFAULT_PROXY_URL } from "@/lib/proxy";
+import { Info } from "lucide-react";
 
-interface ApiKeyFormValues {
+export interface ApiKeyFormValues {
   name: string;
   key: string;
   provider: string;
   model: string;
+  useProxy: boolean;
+  proxyUrl: string;
 }
 
 interface ApiKeyFormProps {
@@ -17,6 +21,7 @@ interface ApiKeyFormProps {
 
 export function ApiKeyForm({ initialValues, onCancel, onSubmit, submitLabel }: ApiKeyFormProps) {
   const [values, setValues] = useState<ApiKeyFormValues>(initialValues);
+  const [showProxyInfo, setShowProxyInfo] = useState(false);
 
   const providerOptions = useMemo(
     () => Object.entries(PROVIDER_LABELS) as Array<[ProviderId, string]>,
@@ -41,6 +46,8 @@ export function ApiKeyForm({ initialValues, onCancel, onSubmit, submitLabel }: A
       key: values.key.trim(),
       provider: values.provider,
       model: values.model.trim(),
+      useProxy: values.useProxy,
+      proxyUrl: values.proxyUrl.trim() || DEFAULT_PROXY_URL,
     });
   }
 
@@ -78,6 +85,47 @@ export function ApiKeyForm({ initialValues, onCancel, onSubmit, submitLabel }: A
         placeholder="API Key"
         className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
       />
+      <div className="rounded-lg border border-border p-3 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={values.useProxy}
+              onChange={(event) =>
+                setValues((current) => ({
+                  ...current,
+                  useProxy: event.target.checked,
+                  proxyUrl: current.proxyUrl || DEFAULT_PROXY_URL,
+                }))
+              }
+            />
+            Use proxy
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowProxyInfo((current) => !current)}
+            className="p-1 rounded-full hover:bg-accent text-muted-foreground"
+          >
+            <Info className="h-4 w-4" />
+          </button>
+        </div>
+        {showProxyInfo && (
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>Some LLM providers block direct browser calls with CORS, so the request never reaches the API.</p>
+            <p>A proxy forwards the request from your own server, which bypasses browser CORS checks.</p>
+            <p>Only use a proxy you trust, because it can see your API key and request content.</p>
+          </div>
+        )}
+        {values.useProxy && (
+          <input
+            type="text"
+            value={values.proxyUrl}
+            onChange={(event) => setValues((current) => ({ ...current, proxyUrl: event.target.value }))}
+            placeholder={DEFAULT_PROXY_URL}
+            className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        )}
+      </div>
       <div className="flex gap-2">
         <button
           onClick={handleSubmit}

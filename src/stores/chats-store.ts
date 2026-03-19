@@ -16,11 +16,6 @@ function normalizeChat(chat: Partial<Chat>): Chat {
     contextPrompt: chat.contextPrompt || "",
     memoryEnabled: chat.memoryEnabled ?? true,
     memoryPrompt: chat.memoryPrompt || "",
-    installedTemplates: (chat.installedTemplates || []).map((template) => ({
-      ...template,
-      css: template.css || "",
-      js: template.js || "",
-    })),
     enabledTemplateIds: chat.enabledTemplateIds || [],
   };
 }
@@ -53,7 +48,6 @@ export const useChatsStore = create<ChatsState>()(
           contextPrompt: "",
           memoryEnabled: true,
           memoryPrompt: "",
-          installedTemplates: [],
           enabledTemplateIds: [],
         };
         set((s) => ({ chats: [chat, ...s.chats] }));

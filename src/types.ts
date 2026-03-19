@@ -4,6 +4,8 @@ export interface ApiKeyEntry {
   key: string;
   provider: string;
   model: string;
+  useProxy: boolean;
+  proxyUrl: string;
 }
 
 export interface Agent {
@@ -36,7 +38,6 @@ export interface Chat {
   contextPrompt: string;
   memoryEnabled: boolean;
   memoryPrompt: string;
-  installedTemplates: ChatTemplate[];
   enabledTemplateIds: string[];
 }
 

@@ -51,6 +51,82 @@ window.ChatAPI.on('core:mounted', () => {
 });`,
 };
 
+const DEBUG_HTML_TEMPLATE_1: ChatTemplate = {
+  id: "debug-html-template-1",
+  name: "Status Ribbon Plugin",
+  description: "Adds a status ribbon and highlights TODO or NOTE text inside assistant replies.",
+  css: `.plugin-ribbon { margin: 0 16px 12px; padding: 10px 12px; border-radius: 14px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(59, 130, 246, 0.16)); color: #065f46; font-size: 12px; font-weight: 700; }
+.plugin-mini-btn { padding: 8px 12px; background: #0f172a; color: white; border: none; border-radius: 999px; cursor: pointer; font-weight: 600; }`,
+  js: `
+window.ChatAPI.addFilter('render:text', (text) => {
+  return String(text).replace(/(TODO|NOTE)/gi, "<mark style='background:#fde68a;color:#92400e;padding:0 4px;border-radius:4px;'>$1</mark>");
+});
+window.ChatAPI.on('core:mounted', () => {
+  const topAnchor = document.getElementById('top-injection-anchor');
+  if (topAnchor && !document.getElementById('status-ribbon-plugin')) {
+    const ribbon = document.createElement('div');
+    ribbon.id = 'status-ribbon-plugin';
+    ribbon.className = 'plugin-ribbon';
+    ribbon.textContent = 'Status Ribbon template is active';
+    topAnchor.appendChild(ribbon);
+  }
+  const bottomAnchor = document.getElementById('bottom-injection-anchor');
+  if (bottomAnchor && !document.getElementById('status-ribbon-button')) {
+    const button = document.createElement('button');
+    button.id = 'status-ribbon-button';
+    button.className = 'plugin-mini-btn';
+    button.textContent = 'Summarize status';
+    button.addEventListener('click', () => {
+      window.ChatAPI.sendToHost('sendMessage', { text: '[Template 1] Please summarize the current status.' });
+    });
+    bottomAnchor.appendChild(button);
+  }
+});`,
+};
+
+const DEBUG_HTML_TEMPLATE_2: ChatTemplate = {
+  id: "debug-html-template-2",
+  name: "Night Glass Plugin",
+  description: "Applies a dark glass visual treatment and adds a quick brainstorming action.",
+  css: `body.plugin-night-glass { background: radial-gradient(circle at top, #1e293b, #020617 70%); color: #e2e8f0; }
+body.plugin-night-glass .msg.assistant .msg-bubble { background: rgba(15, 23, 42, 0.72); color: #e2e8f0; border-color: rgba(148, 163, 184, 0.24); backdrop-filter: blur(12px); }
+body.plugin-night-glass .msg.user .msg-bubble { background: linear-gradient(135deg, #7c3aed, #2563eb); }
+.plugin-glass-chip { margin: 0 16px 12px; padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.18); font-size: 12px; width: fit-content; }
+.plugin-glass-btn { padding: 8px 12px; background: rgba(255,255,255,0.08); color: #e2e8f0; border: 1px solid rgba(148,163,184,0.18); border-radius: 999px; cursor: pointer; font-weight: 600; }`,
+  js: `
+window.ChatAPI.addFilter('render:text', (text) => {
+  return String(text).replace(/\b(idea|brainstorm|concept)\b/gi, "<strong style='color:#a78bfa;'>$1</strong>");
+});
+window.ChatAPI.on('core:mounted', () => {
+  document.body.classList.add('plugin-night-glass');
+  const topAnchor = document.getElementById('top-injection-anchor');
+  if (topAnchor && !document.getElementById('night-glass-chip')) {
+    const chip = document.createElement('div');
+    chip.id = 'night-glass-chip';
+    chip.className = 'plugin-glass-chip';
+    chip.textContent = 'Night Glass template enabled';
+    topAnchor.appendChild(chip);
+  }
+  const bottomAnchor = document.getElementById('bottom-injection-anchor');
+  if (bottomAnchor && !document.getElementById('night-glass-button')) {
+    const button = document.createElement('button');
+    button.id = 'night-glass-button';
+    button.className = 'plugin-glass-btn';
+    button.textContent = 'Brainstorm';
+    button.addEventListener('click', () => {
+      window.ChatAPI.sendToHost('sendMessage', { text: '[Template 2] Give me three brainstorming directions.' });
+    });
+    bottomAnchor.appendChild(button);
+  }
+});`,
+};
+
+const DEBUG_TEMPLATE_COMMANDS: Record<string, ChatTemplate> = {
+  HTML: DEBUG_HTML_TEMPLATE,
+  HTML1: DEBUG_HTML_TEMPLATE_1,
+  HTML2: DEBUG_HTML_TEMPLATE_2,
+};
+
 function createGuestUrl(chatId: string, reloadKey: number) {
   return `/guest-chat.html?chatId=${encodeURIComponent(chatId)}&reload=${reloadKey}`;
 }
@@ -64,7 +140,7 @@ export function ChatDetailPage() {
   const navigate = useNavigate();
   const { getChat, updateChat } = useChatsStore();
   const { getAgent } = useAgentsStore();
-  const { apiKeys, defaultModel } = useConfigStore();
+  const { apiKeys, defaultModel, installedTemplates, installTemplate } = useConfigStore();
   const { getMessages, addMessage, updateMessage } = useMessagesStore();
 
   const chat = getChat(id || "");
@@ -79,10 +155,10 @@ export function ChatDetailPage() {
 
   const activeTemplates = useMemo(() => {
     if (!chat) return [];
-    return chat.installedTemplates.filter((template) =>
+    return installedTemplates.filter((template) =>
       chat.enabledTemplateIds.includes(template.id)
     );
-  }, [chat]);
+  }, [chat, installedTemplates]);
 
   const iframeUrl = useMemo(() => {
     if (!id) return "about:blank";
@@ -146,7 +222,13 @@ export function ChatDetailPage() {
     if (agent?.apiKeyId) {
       const selected = apiKeys.find((entry) => entry.id === agent.apiKeyId);
       if (selected) {
-        return { apiKey: selected.key, provider: selected.provider, model: selected.model };
+        return {
+          apiKey: selected.key,
+          provider: selected.provider,
+          model: selected.model,
+          useProxy: selected.useProxy,
+          proxyUrl: selected.proxyUrl,
+        };
       }
     }
     if (agent?.oneTimeApiKey) {
@@ -155,11 +237,19 @@ export function ChatDetailPage() {
         apiKey: agent.oneTimeApiKey,
         provider,
         model: defaultModel || getDefaultModelForProvider(provider),
+        useProxy: false,
+        proxyUrl: "",
       };
     }
     const fallback = apiKeys[0];
     if (!fallback) return null;
-    return { apiKey: fallback.key, provider: fallback.provider, model: fallback.model };
+    return {
+      apiKey: fallback.key,
+      provider: fallback.provider,
+      model: fallback.model,
+      useProxy: fallback.useProxy,
+      proxyUrl: fallback.proxyUrl,
+    };
   }, [agent, apiKeys, defaultModel]);
 
   const appendAssistantMessage = useCallback(
@@ -189,16 +279,14 @@ export function ChatDetailPage() {
   const handleInstallTemplate = useCallback(
     (template: ChatTemplate) => {
       if (!id || !chat) return;
-      const installedTemplates = chat.installedTemplates.some((entry) => entry.id === template.id)
-        ? chat.installedTemplates.map((entry) => (entry.id === template.id ? template : entry))
-        : [...chat.installedTemplates, template];
+      installTemplate(template);
       const enabledTemplateIds = chat.enabledTemplateIds.includes(template.id)
         ? chat.enabledTemplateIds
         : [...chat.enabledTemplateIds, template.id];
       log("installTemplate", template);
-      updateChat(id, { installedTemplates, enabledTemplateIds });
+      updateChat(id, { enabledTemplateIds });
     },
-    [chat, id, log, updateChat]
+    [chat, id, installTemplate, log, updateChat]
   );
 
   const handleSendMessage = useCallback(
@@ -226,10 +314,11 @@ export function ChatDetailPage() {
         },
       });
 
-      if (trimmed.toUpperCase() === "HTML") {
-        appendAssistantMessage("Reference template plugin ready.", {
+      const debugTemplate = DEBUG_TEMPLATE_COMMANDS[trimmed.toUpperCase()];
+      if (debugTemplate) {
+        appendAssistantMessage(`${debugTemplate.name} ready.`, {
           isTemplate: true,
-          templateData: JSON.stringify(DEBUG_HTML_TEMPLATE),
+          templateData: JSON.stringify(debugTemplate),
         });
         return;
       }
@@ -302,11 +391,16 @@ export function ChatDetailPage() {
           },
           onError: (error) => {
             log("api error", error);
-            updateMessage(id, assistantMessage.id, `Error: ${error.message}`);
-            postToIframe("streamError", { error: error.message });
+            const errorMessage = error.message.trim() || "The LLM request failed before any response was returned.";
+            updateMessage(id, assistantMessage.id, `Error: ${errorMessage}`);
+            postToIframe("streamError", { error: errorMessage });
           },
         },
-        controller.signal
+        controller.signal,
+        {
+          useProxy: apiConfig.useProxy,
+          proxyUrl: apiConfig.proxyUrl,
+        }
       );
     },
     [addMessage, agent, appendAssistantMessage, chat, getMessages, id, log, postToIframe, resolveApiConfig, updateChat, updateMessage]
@@ -434,13 +528,13 @@ export function ChatDetailPage() {
 
           <div>
             <label className="text-xs font-medium text-muted-foreground block mb-2">Installed Templates</label>
-            {chat.installedTemplates.length === 0 ? (
+            {installedTemplates.length === 0 ? (
               <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-3">
-                No templates installed yet. Send `HTML` in the chat to generate a reference plugin template.
+                No templates installed yet. Send `HTML`, `HTML1`, or `HTML2` in the chat to generate test templates.
               </div>
             ) : (
               <div className="space-y-2">
-                {chat.installedTemplates.map((template) => {
+                {installedTemplates.map((template) => {
                   const enabled = chat.enabledTemplateIds.includes(template.id);
                   return (
                     <label key={template.id} className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
