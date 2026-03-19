@@ -6,6 +6,7 @@ import { useMessagesStore } from "@/stores/messages-store";
 import { streamChatCompletion, type LLMRequestMessage } from "@/lib/llm";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { getDefaultModelForProvider, inferProviderFromModel } from "@/lib/providers";
+import { DEBUG_TEMPLATE_COMMANDS } from "@/debug-templates";
 import type { ChatTemplate, Message } from "@/types";
 import { Blocks, ChevronLeft, Settings2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -30,117 +31,6 @@ function areTemplateListsEqual(a: ChatTemplate[], b: ChatTemplate[]) {
     );
   });
 }
-
-const DEBUG_HTML_TEMPLATE: ChatTemplate = {
-  id: "debug-html-template",
-  name: "Reference Theme Plugin",
-  description: "Filter + UI injection plugin, following the reference plugin architecture.",
-  css: `.plugin-badge { margin: 0 16px 12px; padding: 10px 12px; border-radius: 12px; background: rgba(79, 70, 229, 0.12); color: #4338ca; font-size: 12px; font-weight: 600; }
-.plugin-ui-btn { padding: 10px 14px; background: #ff4d4f; color: white; border: none; border-radius: 999px; cursor: pointer; font-weight: 700; }`,
-  js: `
-window.ChatAPI.addFilter('render:text', (text) => {
-  let safeText = String(text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  safeText = safeText.replace(/(BUG|报错)/gi, "<strong style='color:#ef4444;font-size:1.05em;'>$1</strong>");
-  return safeText;
-});
-window.ChatAPI.on('core:mounted', () => {
-  const topAnchor = document.getElementById('top-injection-anchor');
-  if (topAnchor && !document.getElementById('reference-plugin-badge')) {
-    const badge = document.createElement('div');
-    badge.id = 'reference-plugin-badge';
-    badge.className = 'plugin-badge';
-    badge.textContent = 'Reference plugin loaded';
-    topAnchor.appendChild(badge);
-  }
-  const bottomAnchor = document.getElementById('bottom-injection-anchor');
-  if (bottomAnchor && !document.getElementById('reference-plugin-button')) {
-    const button = document.createElement('button');
-    button.id = 'reference-plugin-button';
-    button.className = 'plugin-ui-btn';
-    button.textContent = '🚨 Send plugin alert';
-    button.addEventListener('click', () => {
-      window.ChatAPI.sendToHost('sendMessage', { text: '[Plugin Alert] Reference template button clicked' });
-    });
-    bottomAnchor.appendChild(button);
-  }
-});`,
-};
-
-const DEBUG_HTML_TEMPLATE_1: ChatTemplate = {
-  id: "debug-html-template-1",
-  name: "Status Ribbon Plugin",
-  description: "Adds a status ribbon and highlights TODO or NOTE text inside assistant replies.",
-  css: `.plugin-ribbon { margin: 0 16px 12px; padding: 10px 12px; border-radius: 14px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(59, 130, 246, 0.16)); color: #065f46; font-size: 12px; font-weight: 700; }
-.plugin-mini-btn { padding: 8px 12px; background: #0f172a; color: white; border: none; border-radius: 999px; cursor: pointer; font-weight: 600; }`,
-  js: `
-window.ChatAPI.addFilter('render:text', (text) => {
-  return String(text).replace(/(TODO|NOTE)/gi, "<mark style='background:#fde68a;color:#92400e;padding:0 4px;border-radius:4px;'>$1</mark>");
-});
-window.ChatAPI.on('core:mounted', () => {
-  const topAnchor = document.getElementById('top-injection-anchor');
-  if (topAnchor && !document.getElementById('status-ribbon-plugin')) {
-    const ribbon = document.createElement('div');
-    ribbon.id = 'status-ribbon-plugin';
-    ribbon.className = 'plugin-ribbon';
-    ribbon.textContent = 'Status Ribbon template is active';
-    topAnchor.appendChild(ribbon);
-  }
-  const bottomAnchor = document.getElementById('bottom-injection-anchor');
-  if (bottomAnchor && !document.getElementById('status-ribbon-button')) {
-    const button = document.createElement('button');
-    button.id = 'status-ribbon-button';
-    button.className = 'plugin-mini-btn';
-    button.textContent = 'Summarize status';
-    button.addEventListener('click', () => {
-      window.ChatAPI.sendToHost('sendMessage', { text: '[Template 1] Please summarize the current status.' });
-    });
-    bottomAnchor.appendChild(button);
-  }
-});`,
-};
-
-const DEBUG_HTML_TEMPLATE_2: ChatTemplate = {
-  id: "debug-html-template-2",
-  name: "Night Glass Plugin",
-  description: "Applies a dark glass visual treatment and adds a quick brainstorming action.",
-  css: `body.plugin-night-glass { background: radial-gradient(circle at top, #1e293b, #020617 70%); color: #e2e8f0; }
-body.plugin-night-glass .msg.assistant .msg-bubble { background: rgba(15, 23, 42, 0.72); color: #e2e8f0; border-color: rgba(148, 163, 184, 0.24); backdrop-filter: blur(12px); }
-body.plugin-night-glass .msg.user .msg-bubble { background: linear-gradient(135deg, #7c3aed, #2563eb); }
-.plugin-glass-chip { margin: 0 16px 12px; padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.18); font-size: 12px; width: fit-content; }
-.plugin-glass-btn { padding: 8px 12px; background: rgba(255,255,255,0.08); color: #e2e8f0; border: 1px solid rgba(148,163,184,0.18); border-radius: 999px; cursor: pointer; font-weight: 600; }`,
-  js: `
-window.ChatAPI.addFilter('render:text', (text) => {
-  return String(text).replace(/\b(idea|brainstorm|concept)\b/gi, "<strong style='color:#a78bfa;'>$1</strong>");
-});
-window.ChatAPI.on('core:mounted', () => {
-  document.body.classList.add('plugin-night-glass');
-  const topAnchor = document.getElementById('top-injection-anchor');
-  if (topAnchor && !document.getElementById('night-glass-chip')) {
-    const chip = document.createElement('div');
-    chip.id = 'night-glass-chip';
-    chip.className = 'plugin-glass-chip';
-    chip.textContent = 'Night Glass template enabled';
-    topAnchor.appendChild(chip);
-  }
-  const bottomAnchor = document.getElementById('bottom-injection-anchor');
-  if (bottomAnchor && !document.getElementById('night-glass-button')) {
-    const button = document.createElement('button');
-    button.id = 'night-glass-button';
-    button.className = 'plugin-glass-btn';
-    button.textContent = 'Brainstorm';
-    button.addEventListener('click', () => {
-      window.ChatAPI.sendToHost('sendMessage', { text: '[Template 2] Give me three brainstorming directions.' });
-    });
-    bottomAnchor.appendChild(button);
-  }
-});`,
-};
-
-const DEBUG_TEMPLATE_COMMANDS: Record<string, ChatTemplate> = {
-  HTML: DEBUG_HTML_TEMPLATE,
-  HTML1: DEBUG_HTML_TEMPLATE_1,
-  HTML2: DEBUG_HTML_TEMPLATE_2,
-};
 
 function createGuestUrl(chatId: string, reloadKey: number) {
   return `/guest-chat.html?chatId=${encodeURIComponent(chatId)}&reload=${reloadKey}`;
