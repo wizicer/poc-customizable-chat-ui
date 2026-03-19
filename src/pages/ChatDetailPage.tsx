@@ -7,13 +7,28 @@ import { streamChatCompletion, type LLMRequestMessage } from "@/lib/llm";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { getDefaultModelForProvider, inferProviderFromModel } from "@/lib/providers";
 import type { ChatTemplate, Message } from "@/types";
-import { ChevronLeft, Settings2 } from "lucide-react";
+import { Blocks, ChevronLeft, Settings2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface GuestPayload {
   text?: string;
   clientMessageId?: string;
   templateData?: ChatTemplate;
+}
+
+function areTemplateListsEqual(a: ChatTemplate[], b: ChatTemplate[]) {
+  if (a.length !== b.length) return false;
+
+  return a.every((template, index) => {
+    const other = b[index];
+    return (
+      template.id === other?.id &&
+      template.name === other?.name &&
+      template.description === other?.description &&
+      template.css === other?.css &&
+      template.js === other?.js
+    );
+  });
 }
 
 const DEBUG_HTML_TEMPLATE: ChatTemplate = {
@@ -149,21 +164,23 @@ export function ChatDetailPage() {
   const abortRef = useRef<AbortController | null>(null);
   const pendingMessagesRef = useRef<Array<{ action: string; payload?: unknown }>>([]);
   const iframeReadyRef = useRef(false);
+  const previousActiveTemplatesRef = useRef<ChatTemplate[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTemplatePanel, setShowTemplatePanel] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
+  const [pendingTemplateInstall, setPendingTemplateInstall] = useState<ChatTemplate | null>(null);
 
   const activeTemplates = useMemo(() => {
     if (!chat) return [];
     return installedTemplates.filter((template) =>
       chat.enabledTemplateIds.includes(template.id)
     );
-  }, [chat, installedTemplates]);
+  }, [chat?.enabledTemplateIds, installedTemplates]);
 
   const iframeUrl = useMemo(() => {
     if (!id) return "about:blank";
-    return createGuestUrl(id, reloadKey);
-  }, [id, reloadKey]);
+    return createGuestUrl(id, 0);
+  }, [id]);
 
   const log = useCallback((...args: unknown[]) => {
     console.debug("[chat-detail]", ...args);
@@ -289,6 +306,26 @@ export function ChatDetailPage() {
     [chat, id, installTemplate, log, updateChat]
   );
 
+  const handleConfirmInstallTemplate = useCallback(() => {
+    if (!pendingTemplateInstall) return;
+    handleInstallTemplate(pendingTemplateInstall);
+    setPendingTemplateInstall(null);
+    setShowTemplatePanel(true);
+  }, [handleInstallTemplate, pendingTemplateInstall]);
+
+  const updateEnabledTemplates = useCallback(
+    (templateId: string, enabled: boolean) => {
+      if (!id || !chat) return;
+      const enabledTemplateIds = enabled
+        ? chat.enabledTemplateIds.includes(templateId)
+          ? chat.enabledTemplateIds
+          : [...chat.enabledTemplateIds, templateId]
+        : chat.enabledTemplateIds.filter((value) => value !== templateId);
+      updateChat(id, { enabledTemplateIds });
+    },
+    [chat, id, updateChat]
+  );
+
   const handleSendMessage = useCallback(
     async (text: string, clientMessageId?: string) => {
       if (!chat || !agent || !id) return;
@@ -374,9 +411,12 @@ export function ChatDetailPage() {
           },
           onDone: (fullText) => {
             log("api done", { fullText });
-            updateMessage(id, assistantMessage.id, fullText);
+            const finalText = fullText.trim()
+              ? fullText
+              : "Error: The LLM returned an empty response.";
+            updateMessage(id, assistantMessage.id, finalText);
             updateChat(id, {
-              lastMessage: fullText.slice(0, 100),
+              lastMessage: finalText.slice(0, 100),
               lastMessageTime: Date.now(),
               unread: false,
             });
@@ -384,7 +424,7 @@ export function ChatDetailPage() {
               message: {
                 id: assistantMessage.id,
                 role: "assistant",
-                content: fullText,
+                content: finalText,
                 timestamp: Date.now(),
               },
             });
@@ -392,8 +432,22 @@ export function ChatDetailPage() {
           onError: (error) => {
             log("api error", error);
             const errorMessage = error.message.trim() || "The LLM request failed before any response was returned.";
-            updateMessage(id, assistantMessage.id, `Error: ${errorMessage}`);
-            postToIframe("streamError", { error: errorMessage });
+            const content = `Error: ${errorMessage}`;
+            updateMessage(id, assistantMessage.id, content);
+            updateChat(id, {
+              lastMessage: content.slice(0, 100),
+              lastMessageTime: Date.now(),
+              unread: false,
+            });
+            postToIframe("streamError", {
+              error: errorMessage,
+              message: {
+                id: assistantMessage.id,
+                role: "assistant",
+                content,
+                timestamp: Date.now(),
+              },
+            });
           },
         },
         controller.signal,
@@ -408,10 +462,14 @@ export function ChatDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    localStorage.setItem(getPluginStorageKey(id), JSON.stringify(activeTemplates));
-    iframeReadyRef.current = false;
-    setReloadKey((value) => value + 1);
-  }, [activeTemplates, id]);
+
+    const hasChanged = !areTemplateListsEqual(previousActiveTemplatesRef.current, activeTemplates);
+    previousActiveTemplatesRef.current = activeTemplates;
+
+    if (!hasChanged) return;
+
+    postToIframe("setTemplates", { templates: activeTemplates });
+  }, [activeTemplates, id, postToIframe]);
 
   useEffect(() => {
     function handleWindowMessage(event: MessageEvent) {
@@ -431,17 +489,24 @@ export function ChatDetailPage() {
         return;
       }
 
-      if (data.action === "installTemplate" && data.payload?.templateData) {
-        handleInstallTemplate(data.payload.templateData);
+      if (data.action === "requestInstallTemplate" && data.payload?.templateData) {
+        setPendingTemplateInstall(data.payload.templateData);
       }
     }
 
     window.addEventListener("message", handleWindowMessage);
     return () => {
       window.removeEventListener("message", handleWindowMessage);
-      abortRef.current?.abort();
     };
-  }, [handleInstallTemplate, handleSendMessage, initGuest, log]);
+  }, [handleSendMessage, initGuest, log]);
+
+  useEffect(() => {
+    return () => {
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+    };
+  }, []);
 
   if (!chat || !agent || !id) {
     return (
@@ -461,6 +526,9 @@ export function ChatDetailPage() {
           {chat.icon || agent.avatar}
         </div>
         <span className="font-medium flex-1 truncate">{chat.title}</span>
+        <button onClick={() => setShowTemplatePanel(true)} className="p-1 rounded-full hover:bg-accent">
+          <Blocks className="h-5 w-5" />
+        </button>
         <button onClick={() => setShowSettings((value) => !value)} className="p-1 rounded-full hover:bg-accent">
           <Settings2 className="h-5 w-5" />
         </button>
@@ -525,28 +593,35 @@ export function ChatDetailPage() {
               className="w-full px-2 py-1.5 text-sm rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
             />
           </div>
+        </div>
+      )}
 
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-2">Installed Templates</label>
-            {installedTemplates.length === 0 ? (
-              <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-3">
-                No templates installed yet. Send `HTML`, `HTML1`, or `HTML2` in the chat to generate test templates.
+      {showTemplatePanel && (
+        <div className="absolute inset-0 z-20 bg-black/30 flex items-start justify-center p-4">
+          <div className="w-full max-w-lg mt-12 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div>
+                <div className="text-sm font-semibold">Templates</div>
+                <div className="text-xs text-muted-foreground">Installed globally, enabled per chat.</div>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {installedTemplates.map((template) => {
+              <button onClick={() => setShowTemplatePanel(false)} className="p-1 rounded-full hover:bg-accent">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
+              {installedTemplates.length === 0 ? (
+                <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-3">
+                  No templates installed yet. Send `HTML`, `HTML1`, or `HTML2` in the chat to generate test templates.
+                </div>
+              ) : (
+                installedTemplates.map((template) => {
                   const enabled = chat.enabledTemplateIds.includes(template.id);
                   return (
                     <label key={template.id} className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={enabled}
-                        onChange={(event) => {
-                          const enabledTemplateIds = event.target.checked
-                            ? [...chat.enabledTemplateIds, template.id]
-                            : chat.enabledTemplateIds.filter((value) => value !== template.id);
-                          updateChat(id, { enabledTemplateIds });
-                        }}
+                        onChange={(event) => updateEnabledTemplates(template.id, event.target.checked)}
                         className="mt-1"
                       />
                       <div className="min-w-0 flex-1">
@@ -555,9 +630,38 @@ export function ChatDetailPage() {
                       </div>
                     </label>
                   );
-                })}
-              </div>
-            )}
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingTemplateInstall && (
+        <div className="absolute inset-0 z-30 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-xl p-4 space-y-4">
+            <div>
+              <div className="text-sm font-semibold">Install template?</div>
+              <div className="text-sm text-muted-foreground mt-1">`{pendingTemplateInstall.name}` will be installed globally and enabled for this chat.</div>
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <div className="text-sm font-medium">{pendingTemplateInstall.name}</div>
+              <div className="text-xs text-muted-foreground mt-1">{pendingTemplateInstall.description}</div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingTemplateInstall(null)}
+                className="px-3 py-2 rounded-md border border-border text-sm hover:bg-accent"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmInstallTemplate}
+                className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium"
+              >
+                Install
+              </button>
+            </div>
           </div>
         </div>
       )}

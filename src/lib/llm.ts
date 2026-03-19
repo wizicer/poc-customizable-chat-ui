@@ -80,6 +80,8 @@ export async function streamChatCompletion(
   const useProxy = options?.useProxy ?? false;
   const proxyUrl = options?.proxyUrl?.trim() || DEFAULT_PROXY_URL;
 
+  const validMessages = messages.filter((m) => m.content && m.content.trim() !== "");
+
   let url: string;
   let headers: Record<string, string>;
   let body: unknown;
@@ -92,8 +94,8 @@ export async function streamChatCompletion(
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true",
     };
-    const systemMsg = messages.find((m) => m.role === "system");
-    const nonSystemMsgs = messages.filter((m) => m.role !== "system");
+    const systemMsg = validMessages.find((m) => m.role === "system");
+    const nonSystemMsgs = validMessages.filter((m) => m.role !== "system");
     body = {
       model,
       max_tokens: 4096,
@@ -104,8 +106,8 @@ export async function streamChatCompletion(
   } else if (isGemini) {
     url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
     headers = { "Content-Type": "application/json" };
-    const systemMsg = messages.find((m) => m.role === "system");
-    const nonSystemMsgs = messages.filter((m) => m.role !== "system");
+    const systemMsg = validMessages.find((m) => m.role === "system");
+    const nonSystemMsgs = validMessages.filter((m) => m.role !== "system");
     body = {
       ...(systemMsg
         ? { system_instruction: { parts: [{ text: systemMsg.content }] } }
@@ -129,7 +131,7 @@ export async function streamChatCompletion(
     body = {
       model,
       stream: true,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: validMessages.map((m) => ({ role: m.role, content: m.content })),
     };
   }
 
@@ -140,8 +142,8 @@ export async function streamChatCompletion(
       url,
       useProxy,
       proxyUrl: useProxy ? proxyUrl : undefined,
-      messageCount: messages.length,
-      roles: messages.map((message) => message.role),
+      messageCount: validMessages.length,
+      roles: validMessages.map((message) => message.role),
     });
 
     const requestUrl = useProxy ? proxyUrl : url;

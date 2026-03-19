@@ -151,12 +151,13 @@
   <script>
     const params = new URLSearchParams(window.location.search);
     const chatId = params.get("chatId") || "";
-    const pluginStorageKey = chatId ? `chat-plugin-bundle:${chatId}` : "";
     const messageList = document.getElementById("message-list");
     const msgInput = document.getElementById("msg-input");
     const sendBtn = document.getElementById("send-btn");
     const typingIndicator = document.getElementById("typing-indicator");
     const dynamicPluginStyles = document.getElementById("dynamic-plugin-styles");
+    const topInjectionAnchor = document.getElementById("top-injection-anchor");
+    const bottomInjectionAnchor = document.getElementById("bottom-injection-anchor");
     let streamElement = null;
     let streamText = "";
     let isStreaming = false;
@@ -182,6 +183,12 @@
       requestAnimationFrame(() => {
         messageList.scrollTop = messageList.scrollHeight;
       });
+    }
+
+    function installBaseFilters() {
+      window.ChatAPI.filters["render:text"] = [
+        (text) => escapeHtml(String(text ?? "")).replace(/\n/g, "<br />")
+      ];
     }
 
     window.ChatAPI = {
@@ -211,18 +218,29 @@
       }
     };
 
-    window.ChatAPI.addFilter("render:text", (text) => {
-      return escapeHtml(String(text ?? "")).replace(/\n/g, "<br />");
-    });
+    installBaseFilters();
 
-    function loadPlugins() {
-      if (!pluginStorageKey) return;
-      try {
-        activePlugins = JSON.parse(localStorage.getItem(pluginStorageKey) || "[]");
-      } catch (error) {
-        log("plugin parse error", error);
-        activePlugins = [];
+    function resetPluginRuntime() {
+      window.ChatAPI.events = {};
+      window.ChatAPI.filters = {};
+      installBaseFilters();
+      dynamicPluginStyles.textContent = "";
+      document.body.className = "";
+      if (topInjectionAnchor) {
+        topInjectionAnchor.innerHTML = "";
       }
+      if (bottomInjectionAnchor) {
+        Array.from(bottomInjectionAnchor.children).forEach((child) => {
+          if (child.id !== "msg-input" && child.id !== "send-btn") {
+            child.remove();
+          }
+        });
+      }
+    }
+
+    function loadPlugins(plugins) {
+      activePlugins = Array.isArray(plugins) ? plugins : [];
+      resetPluginRuntime();
       dynamicPluginStyles.textContent = activePlugins.map((plugin) => plugin.css || "").join("\n\n");
       activePlugins.forEach((plugin) => {
         if (!plugin.js) return;
@@ -232,6 +250,7 @@
           log("plugin eval error", plugin.id, error);
         }
       });
+      window.ChatAPI.emit("core:mounted", {});
       log("plugins loaded", activePlugins.map((plugin) => plugin.id));
     }
 
@@ -267,7 +286,7 @@
         }
         node.innerHTML = parsed ? createTemplateMarkup(parsed) : '<div class="msg-bubble">' + escapeHtml(message.content) + '</div>';
         node.onclick = parsed
-          ? () => window.ChatAPI.sendToHost("installTemplate", { templateData: parsed })
+          ? () => window.ChatAPI.sendToHost("requestInstallTemplate", { templateData: parsed })
           : null;
       } else {
         node.onclick = null;
@@ -329,7 +348,12 @@
       if (!data || !data.action) return;
 
       if (data.action === "initChat") {
+        loadPlugins(data.payload?.templates || []);
         resetMessages(data.payload?.messages || []);
+      }
+
+      if (data.action === "setTemplates") {
+        loadPlugins(data.payload?.templates || []);
       }
 
       if (data.action === "appendMessage" && data.payload?.message) {
@@ -375,7 +399,7 @@
           streamElement = null;
         }
         streamText = "";
-        renderMessage({
+        renderMessage(data.payload?.message || {
           id: String(Date.now()),
           role: "assistant",
           content: "Error: " + (data.payload?.error || "Unknown error"),
@@ -384,8 +408,6 @@
       }
     });
 
-    loadPlugins();
-    window.ChatAPI.emit("core:mounted", {});
     log("guest ready");
     window.ChatAPI.sendToHost("guestReady", {});
   </script>
