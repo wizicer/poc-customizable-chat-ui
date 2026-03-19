@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Guest Core</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; background: transparent; }
+        #message-list { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+        .msg-wrapper { margin-bottom: 15px; display: flex; flex-direction: column; }
+        .msg-wrapper.self { align-items: flex-end; }
+        .msg-sender { font-size: 12px; color: #888; margin-bottom: 4px; }
+        .msg-bubble { display: inline-block; padding: 10px 14px; border-radius: 8px; background: white; max-width: 70%; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.1); word-wrap: break-word; }
+        .msg-wrapper.self .msg-bubble { background: #dcf8c6; }
+        .input-area { display: flex; gap: 10px; padding-top: 15px; border-top: 1px solid #eee; }
+        input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; outline: none; }
+        .core-btn { padding: 10px 20px; cursor: pointer; background: #075e54; color: white; border: none; border-radius: 4px; }
+    </style>
+
+    <script>
+        // 核心 API 暴露给所有插件
+        window.ChatAPI = {
+            events: {},
+            filters: {},
+            
+            // 事件总线：用于生命周期和通知
+            on(event, callback) {
+                if (!this.events[event]) this.events[event] = [];
+                this.events[event].push(callback);
+            },
+            emit(event, data) {
+                if (this.events[event]) {
+                    this.events[event].forEach(cb => cb(data));
+                }
+            },
+            
+            // 管道过滤器：用于数据流转修改
+            addFilter(name, callback) {
+                if (!this.filters[name]) this.filters[name] = [];
+                this.filters[name].push(callback);
+            },
+            applyFilter(name, data) {
+                let result = data;
+                if (this.filters[name]) {
+                    this.filters[name].forEach(cb => { result = cb(result); });
+                }
+                return result;
+            },
+
+            // 通信接口
+            sendToHost(action, payload) {
+                window.parent.postMessage({ action, payload }, '*');
+            }
+        };
+
+        // 动态加载插件
+        const params = new URLSearchParams(window.location.search);
+        const pluginsParam = params.get('plugins');
+        if (pluginsParam) {
+            pluginsParam.split(',').forEach(plugin => {
+                if (!plugin.trim()) return;
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = `${plugin.trim()}.css`;
+                document.head.appendChild(link);
+                document.write(`<script src="${plugin.trim()}.js"><\/script>`);
+            });
+        }
+    </script>
+    <script src="alpinejs-cdn.min.js" defer></script>
+</head>
+
+<body x-data="chatEngine()" @message.window="handleMessage($event.data)">
+    
+    <div id="top-injection-anchor"></div>
+
+    <div id="message-list" x-ref="list">
+        <template x-for="msg in messages" :key="msg.id">
+            <div class="msg-wrapper" :class="{'self': msg.type === 'self'}">
+                <div class="msg-sender" x-text="msg.sender"></div>
+                <div class="msg-bubble" x-html="ChatAPI.applyFilter('render:text', msg.text)"></div>
+            </div>
+        </template>
+    </div>
+
+    <div class="input-area" id="bottom-injection-anchor">
+        <input type="text" x-model="inputText" @keydown.enter="sendMsg()" placeholder="输入消息..." />
+        <button class="core-btn" @click="sendMsg()">发送</button>
+    </div>
+
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('chatEngine', () => ({
+                messages: [],
+                inputText: '',
+
+                init() {
+                    // 通知所有插件：DOM 和 Alpine 环境已就绪
+                    window.ChatAPI.emit('core:mounted', this);
+                    window.ChatAPI.sendToHost('guestReady', {});
+                },
+
+                handleMessage(data) {
+                    if (!data || !data.action) return;
+                    if (data.action === 'initChat') {
+                        this.messages = data.payload.messages;
+                        this.scrollToBottom();
+                    } else if (data.action === 'appendMessage') {
+                        this.messages.push(data.payload.message);
+                        this.scrollToBottom();
+                    }
+                },
+
+                sendMsg() {
+                    if (!this.inputText.trim()) return;
+                    window.ChatAPI.sendToHost('sendMessage', { text: this.inputText.trim() });
+                    this.inputText = '';
+                },
+
+                scrollToBottom() {
+                    this.$nextTick(() => {
+                        const list = this.$refs.list;
+                        if (list) list.scrollTop = list.scrollHeight;
+                    });
+                }
+            }));
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Host Application (Composable Plugins)</title>
+    <style>
+        body { margin: 0; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; background: #f0f2f5; }
+        #sidebar { width: 300px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+        .header { padding: 20px; background: #075e54; color: white; font-weight: bold; }
+        .chat-item { padding: 20px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s; }
+        .chat-item:hover { background: #f9f9f9; }
+        
+        #main-view { flex: 1; display: flex; flex-direction: column; position: relative; }
+        #toolbar { padding: 15px 20px; background: #fff; border-bottom: 1px solid #ddd; display: flex; flex-direction: column; gap: 10px; }
+        .toolbar-top { display: flex; justify-content: space-between; align-items: center; }
+        .toolbar-plugins { font-size: 14px; background: #f9f9f9; padding: 10px; border-radius: 4px; border: 1px solid #eee; }
+        
+        button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; background: #e0e0e0; font-size: 14px; }
+        button:hover { background: #d0d0d0; }
+        .btn-close { background: #fff; border: 1px solid #ccc; }
+        .btn-reload { background: #1890ff; color: white; }
+
+        #chat-frame { flex: 1; border: none; width: 100%; height: 100%; background: #ece5dd; }
+        #overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: white; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #888; z-index: 10; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="header">聊天列表</div>
+        <div class="chat-item" onclick="openChat('DevTeam')">与 研发团队 聊天</div>
+    </div>
+
+    <div id="main-view">
+        <div id="overlay">请从左侧选择一个聊天</div>
+        
+        <div id="toolbar" style="display: none;">
+            <div class="toolbar-top">
+                <button class="btn-close" onclick="closeChat()">返回列表</button>
+                <span id="current-chat-name" style="font-weight: bold;"></span>
+                <button class="btn-reload" onclick="loadIframe()">🚀 应用勾选的插件并重载</button>
+            </div>
+            <div style="font-size: 14px; background: #f9f9f9; padding: 10px; border-radius: 4px;">
+                <strong>启用插件: </strong>
+                <label><input type="checkbox" class="plugin-cb" value="plugin_filter" checked> 文本格式化插件 (标红BUG)</label>
+                &nbsp;
+                <label><input type="checkbox" class="plugin-cb" value="plugin_ui" checked> UI注入插件 (自定义面板)</label>
+            </div>
+        </div>
+
+        <iframe id="chat-frame" style="display: none;" sandbox="allow-scripts"></iframe>
+    </div>
+
+    <script>
+        const database = {
+            'DevTeam': [
+                { id: 1, sender: 'Alice', text: '大家早上好！', type: 'other' },
+                { id: 2, sender: 'Bob', text: '昨天发现了一个严重的 BUG，服务器崩溃了。', type: 'other' },
+                { id: 3, sender: 'Charlie', text: '另外注意，机密文件密码是 888888，别泄露了。', type: 'other' },
+                { id: 4, sender: '我', text: '收到，我马上去排查。', type: 'self' }
+            ]
+        };
+
+        let currentContact = '';
+        const chatFrame = document.getElementById('chat-frame');
+        const overlay = document.getElementById('overlay');
+        const toolbar = document.getElementById('toolbar');
+        const currentChatName = document.getElementById('current-chat-name');
+
+        function openChat(contactName) {
+            currentContact = contactName;
+            overlay.style.display = 'none';
+            toolbar.style.display = 'flex';
+            chatFrame.style.display = 'block';
+            currentChatName.innerText = contactName;
+            loadIframe();
+        }
+
+        function loadIframe() {
+            // 获取所有被勾选的插件
+            const checkboxes = document.querySelectorAll('.plugin-cb:checked');
+            const pluginNames = Array.from(checkboxes).map(cb => cb.value).join(',');
+            
+            chatFrame.src = `guest.html?plugins=${pluginNames}&t=${new Date().getTime()}`;
+        }
+
+        function closeChat() {
+            overlay.style.display = 'flex';
+            toolbar.style.display = 'none';
+            chatFrame.style.display = 'none';
+            currentContact = '';
+            chatFrame.src = 'about:blank';
+        }
+
+        window.addEventListener('message', function(event) {
+            const data = event.data;
+            if (!data) return;
+
+            if (data.action === 'guestReady') {
+                const historyData = database[currentContact] || [];
+                chatFrame.contentWindow.postMessage({
+                    action: 'initChat',
+                    payload: { contactName: currentContact, messages: historyData }
+                }, '*');
+            } else if (data.action === 'sendMessage') {
+                const newMsg = {
+                    id: Date.now(),
+                    sender: '我',
+                    text: data.payload.text,
+                    type: 'self'
+                };
+                if (!database[currentContact]) database[currentContact] = [];
+                database[currentContact].push(newMsg);
+
+                chatFrame.contentWindow.postMessage({
+                    action: 'appendMessage',
+                    payload: { message: newMsg }
+                }, '*');
+            }
+        });
+    </script>
+</body>
+</html>

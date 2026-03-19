@@ -1,0 +1,15 @@
+/* plugin_ui.css */
+.plugin-ui-btn {
+    padding: 10px 15px;
+    background-color: #ff4d4f;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.2s;
+}
+
+.plugin-ui-btn:hover {
+    background-color: #ff7875;
+}
