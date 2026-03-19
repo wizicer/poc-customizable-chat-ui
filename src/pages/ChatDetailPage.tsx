@@ -3,9 +3,8 @@ import { useChatsStore } from "@/stores/chats-store";
 import { useAgentsStore } from "@/stores/agents-store";
 import { useConfigStore } from "@/stores/config-store";
 import { useMessagesStore } from "@/stores/messages-store";
-import { DEFAULT_GUEST_HTML } from "@/lib/guest-html";
 import { streamChatCompletion, type LLMRequestMessage } from "@/lib/llm";
-import { ChevronLeft, Settings2 } from "lucide-react";
+import { ChevronLeft, Settings2, Trash2 } from "lucide-react";
 import { useEffect, useRef, useCallback, useState } from "react";
 
 export function ChatDetailPage() {
@@ -22,15 +21,30 @@ export function ChatDetailPage() {
   const abortRef = useRef<AbortController | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [contextPrompt, setContextPrompt] = useState(chat?.contextPrompt || "");
+  const { addTemplate, toggleTemplate, removeTemplate } = useChatsStore();
 
-  const getIframeHtml = useCallback(() => {
-    if (chat?.customHtml) return chat.customHtml;
-    if (agent?.customHtml) return agent.customHtml;
-    return DEFAULT_GUEST_HTML;
-  }, [chat?.customHtml, agent?.customHtml]);
+  const getIframeUrl = useCallback(() => {
+    const enabledTemplates = chat?.templates.filter((t) => t.enabled) || [];
+    if (enabledTemplates.length === 0 && !agent?.customHtml) {
+      return "/guest.html";
+    }
+    
+    let baseHtml = agent?.customHtml || "";
+    if (!baseHtml) {
+      return "/guest.html";
+    }
+    
+    for (const tpl of enabledTemplates) {
+      baseHtml += "\n" + tpl.html;
+    }
+    
+    const blob = new Blob([baseHtml], { type: "text/html" });
+    return URL.createObjectURL(blob);
+  }, [chat?.templates, agent?.customHtml]);
 
   const sendToIframe = useCallback(
     (action: string, payload?: unknown) => {
+      console.log("[Host] Sending to iframe:", action, payload);
       iframeRef.current?.contentWindow?.postMessage({ action, payload }, "*");
     },
     []
@@ -63,6 +77,68 @@ export function ChatDetailPage() {
   const handleSendMessage = useCallback(
     async (text: string) => {
       if (!chat || !id) return;
+
+      console.log("[Host] User sent message:", text);
+
+      if (text.toLowerCase() === "html") {
+        console.log("[Host] HTML command detected, returning template");
+        const userMsg = addMessage(id, "user", text);
+        sendToIframe("appendMessage", {
+          message: {
+            id: userMsg.id,
+            role: "user",
+            content: text,
+            timestamp: userMsg.timestamp,
+          },
+        });
+
+        const templateHtml = `<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-family: sans-serif; padding: 20px; }
+  .message { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px; margin: 10px 0; }
+</style>
+</head>
+<body>
+<h2>Custom Template Example</h2>
+<div id="messages"></div>
+<script>
+  window.addEventListener('message', function(e) {
+    if (e.data.action === 'appendMessage') {
+      const msg = e.data.payload.message;
+      const div = document.createElement('div');
+      div.className = 'message';
+      div.textContent = msg.role + ': ' + msg.content;
+      document.getElementById('messages').appendChild(div);
+    }
+  });
+</script>
+</body>
+</html>`;
+
+        const assistantMsg = addMessage(id, "assistant", templateHtml, {
+          isTemplate: true,
+          templateData: JSON.stringify({ name: "Purple Gradient Theme", html: templateHtml }),
+        });
+
+        sendToIframe("appendMessage", {
+          message: {
+            id: assistantMsg.id,
+            role: "assistant",
+            content: templateHtml,
+            timestamp: assistantMsg.timestamp,
+            isTemplate: true,
+            templateData: JSON.stringify({ name: "Purple Gradient Theme", html: templateHtml }),
+          },
+        });
+
+        updateChat(id, {
+          lastMessage: "[Template]",
+          lastMessageTime: Date.now(),
+        });
+        return;
+      }
 
       const userMsg = addMessage(id, "user", text);
       updateChat(id, {
@@ -119,6 +195,7 @@ export function ChatDetailPage() {
       abortRef.current = controller;
 
       const assistantMsg = addMessage(id, "assistant", "");
+      console.log("[Host] Starting stream for message:", assistantMsg.id);
       sendToIframe("streamStart", {});
 
       await streamChatCompletion(apiKey, defaultModel, llmMessages, {
@@ -126,6 +203,7 @@ export function ChatDetailPage() {
           sendToIframe("streamToken", { token });
         },
         onDone: (fullText) => {
+          console.log("[Host] Stream completed, full text length:", fullText.length);
           updateMessage(id, assistantMsg.id, fullText);
           updateChat(id, {
             lastMessage: fullText.slice(0, 100),
@@ -141,6 +219,7 @@ export function ChatDetailPage() {
           });
         },
         onError: (error) => {
+          console.error("[Host] Stream error:", error);
           updateMessage(id, assistantMsg.id, `Error: ${error.message}`);
           sendToIframe("streamError", { error: error.message });
         },
@@ -156,15 +235,13 @@ export function ChatDetailPage() {
   const handleInstallTemplate = useCallback(
     (templateData: Record<string, unknown>) => {
       if (!id || !chat) return;
+      console.log("[Host] Installing template:", templateData);
       if (templateData.html && typeof templateData.html === "string") {
-        const currentHtml = chat.customHtml || "";
-        const newHtml = currentHtml
-          ? currentHtml + "\n" + templateData.html
-          : templateData.html;
-        updateChat(id, { customHtml: newHtml });
+        const name = (templateData.name as string) || "Custom Template";
+        addTemplate(id, name, templateData.html as string);
       }
     },
-    [id, chat, updateChat]
+    [id, chat, addTemplate]
   );
 
   useEffect(() => {
@@ -172,8 +249,11 @@ export function ChatDetailPage() {
       const data = event.data;
       if (!data || !data.action) return;
 
+      console.log("[Host] Received from iframe:", data.action, data.payload);
+
       switch (data.action) {
         case "guestReady":
+          console.log("[Host] Guest ready, initializing chat");
           initIframeChat();
           break;
         case "sendMessage":
@@ -198,12 +278,15 @@ export function ChatDetailPage() {
 
   useEffect(() => {
     if (!iframeRef.current) return;
-    const html = getIframeHtml();
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
+    const url = getIframeUrl();
+    console.log("[Host] Loading iframe from:", url);
     iframeRef.current.src = url;
-    return () => URL.revokeObjectURL(url);
-  }, [getIframeHtml]);
+    return () => {
+      if (url.startsWith("blob:")) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, [getIframeUrl]);
 
   if (!chat || !agent) {
     return (
@@ -237,7 +320,7 @@ export function ChatDetailPage() {
 
       {/* Chat settings panel */}
       {showSettings && (
-        <div className="border-b border-border bg-card p-3 space-y-3 shrink-0">
+        <div className="border-b border-border bg-card p-3 space-y-3 shrink-0 max-h-80 overflow-y-auto">
           <div>
             <label className="text-xs font-medium text-muted-foreground block mb-1">
               Context Prompt
@@ -254,16 +337,37 @@ export function ChatDetailPage() {
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">
-              Custom HTML
+            <label className="text-xs font-medium text-muted-foreground block mb-2">
+              UI Templates
             </label>
-            <textarea
-              value={chat.customHtml}
-              onChange={(e) => updateChat(id!, { customHtml: e.target.value })}
-              placeholder="Override chat UI HTML..."
-              rows={3}
-              className="w-full px-2 py-1.5 text-sm rounded border border-input bg-background font-mono focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-            />
+            {chat.templates.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">
+                No templates yet. Send "HTML" to get a sample template.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {chat.templates.map((tpl) => (
+                  <div
+                    key={tpl.id}
+                    className="flex items-center gap-2 p-2 rounded border border-border hover:bg-accent/50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={tpl.enabled}
+                      onChange={() => toggleTemplate(id!, tpl.id)}
+                      className="h-4 w-4 rounded border-input"
+                    />
+                    <span className="flex-1 text-sm truncate">{tpl.name}</span>
+                    <button
+                      onClick={() => removeTemplate(id!, tpl.id)}
+                      className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

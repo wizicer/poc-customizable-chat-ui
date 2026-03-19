@@ -1,7 +1,8 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useAgentsStore, AVATARS } from "@/stores/agents-store";
+import { useAgentsStore } from "@/stores/agents-store";
 import { useChatsStore } from "@/stores/chats-store";
 import { useConfigStore } from "@/stores/config-store";
+import { EmojiPicker } from "@/components/EmojiPicker";
 import { ChevronLeft, MessageSquare } from "lucide-react";
 import { useState, useEffect } from "react";
 import type { Agent } from "@/types";
@@ -24,6 +25,7 @@ export function AgentEditPage() {
     oneTimeApiKey: "",
     customHtml: "",
   });
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   useEffect(() => {
     if (existing) {
@@ -80,20 +82,25 @@ export function AgentEditPage() {
         {/* Avatar */}
         <div>
           <label className="text-sm font-medium mb-2 block">Avatar</label>
-          <div className="flex flex-wrap gap-2">
-            {AVATARS.map((a) => (
-              <button
-                key={a}
-                onClick={() => setForm({ ...form, avatar: a })}
-                className={`h-10 w-10 rounded-full flex items-center justify-center text-lg transition-all ${
-                  form.avatar === a
-                    ? "ring-2 ring-primary bg-primary/10 scale-110"
-                    : "bg-muted hover:bg-accent"
-                }`}
-              >
-                {a}
-              </button>
-            ))}
+          <div className="relative">
+            <button
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className="w-16 h-16 text-3xl rounded-xl border-2 border-border hover:border-primary transition-colors flex items-center justify-center bg-card"
+            >
+              {form.avatar}
+            </button>
+            {showEmojiPicker && (
+              <div className="absolute top-20 left-0 z-50">
+                <EmojiPicker
+                  value={form.avatar}
+                  onChange={(emoji) => {
+                    setForm({ ...form, avatar: emoji });
+                    setShowEmojiPicker(false);
+                  }}
+                  onClose={() => setShowEmojiPicker(false)}
+                />
+              </div>
+            )}
           </div>
         </div>
 

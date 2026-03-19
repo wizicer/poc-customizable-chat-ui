@@ -5,6 +5,7 @@ import { AgentsPage } from "@/pages/AgentsPage";
 import { AgentEditPage } from "@/pages/AgentEditPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { ChatDetailPage } from "@/pages/ChatDetailPage";
+import { ChatCreatePage } from "@/pages/ChatCreatePage";
 import { useConfigStore } from "@/stores/config-store";
 import { applyTheme } from "@/lib/theme";
 import { useEffect } from "react";
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/agent/:id" element={<AgentEditPage />} />
+          <Route path="/chat/new" element={<ChatCreatePage />} />
           <Route path="/chat/:id" element={<ChatDetailPage />} />
           <Route path="*" element={<Navigate to="/chats" replace />} />
         </Route>

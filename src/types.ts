@@ -15,14 +15,22 @@ export interface Agent {
   customHtml: string;
 }
 
+export interface ChatTemplate {
+  id: string;
+  name: string;
+  html: string;
+  enabled: boolean;
+}
+
 export interface Chat {
   id: string;
   agentId: string;
   title: string;
+  icon: string;
   lastMessage: string;
   lastMessageTime: number;
   unread: boolean;
-  customHtml: string;
+  templates: ChatTemplate[];
   contextPrompt: string;
 }
 

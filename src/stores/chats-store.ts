@@ -9,7 +9,9 @@ interface ChatsState {
   updateChat: (id: string, data: Partial<Omit<Chat, "id">>) => void;
   removeChat: (id: string) => void;
   getChat: (id: string) => Chat | undefined;
-  resetChatUI: (id: string) => void;
+  addTemplate: (chatId: string, name: string, html: string) => void;
+  toggleTemplate: (chatId: string, templateId: string) => void;
+  removeTemplate: (chatId: string, templateId: string) => void;
 }
 
 export const useChatsStore = create<ChatsState>()(
@@ -23,10 +25,11 @@ export const useChatsStore = create<ChatsState>()(
           id,
           agentId,
           title: agentName,
+          icon: "💬",
           lastMessage: "",
           lastMessageTime: Date.now(),
           unread: false,
-          customHtml: "",
+          templates: [],
           contextPrompt: "",
         };
         set((s) => ({ chats: [chat, ...s.chats] }));
@@ -43,10 +46,46 @@ export const useChatsStore = create<ChatsState>()(
 
       getChat: (id) => get().chats.find((c) => c.id === id),
 
-      resetChatUI: (id) =>
+      addTemplate: (chatId, name, html) => {
+        const templateId = uuidv4();
         set((s) => ({
           chats: s.chats.map((c) =>
-            c.id === id ? { ...c, customHtml: "" } : c
+            c.id === chatId
+              ? {
+                  ...c,
+                  templates: [
+                    ...c.templates,
+                    { id: templateId, name, html, enabled: false },
+                  ],
+                }
+              : c
+          ),
+        }));
+      },
+
+      toggleTemplate: (chatId, templateId) =>
+        set((s) => ({
+          chats: s.chats.map((c) =>
+            c.id === chatId
+              ? {
+                  ...c,
+                  templates: c.templates.map((t) =>
+                    t.id === templateId ? { ...t, enabled: !t.enabled } : t
+                  ),
+                }
+              : c
+          ),
+        })),
+
+      removeTemplate: (chatId, templateId) =>
+        set((s) => ({
+          chats: s.chats.map((c) =>
+            c.id === chatId
+              ? {
+                  ...c,
+                  templates: c.templates.filter((t) => t.id !== templateId),
+                }
+              : c
           ),
         })),
     }),

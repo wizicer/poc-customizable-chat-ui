@@ -1,4 +1,4 @@
-export const DEFAULT_GUEST_HTML = `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -75,10 +75,12 @@ export const DEFAULT_GUEST_HTML = `<!DOCTYPE html>
   let streamBubble = null;
 
   function sendToHost(action, payload) {
+    console.log('[Guest] Sending to host:', action, payload);
     window.parent.postMessage({ action, payload }, '*');
   }
 
   function renderMessage(msg) {
+    console.log('[Guest] Rendering message:', msg);
     const div = document.createElement('div');
     div.className = 'msg ' + msg.role;
     div.dataset.id = msg.id;
@@ -87,7 +89,7 @@ export const DEFAULT_GUEST_HTML = `<!DOCTYPE html>
       try {
         const tpl = JSON.parse(msg.templateData);
         div.innerHTML =
-          '<div class="template-msg" onclick="installTemplate(this, ' + "'" + msg.templateData.replace(/'/g, "\\\\'") + "'" + ')">' +
+          '<div class="template-msg" onclick="installTemplate(this, \'' + msg.templateData.replace(/'/g, "\\'") + '\')">' +
           '<div class="template-label">📦 Template</div>' +
           '<div class="template-title">' + escapeHtml(tpl.name || 'Custom Template') + '</div>' +
           '</div>';
@@ -132,7 +134,7 @@ export const DEFAULT_GUEST_HTML = `<!DOCTYPE html>
     try {
       const tpl = JSON.parse(dataStr);
       sendToHost('installTemplate', { templateData: tpl });
-    } catch(e) { console.error('Failed to parse template', e); }
+    } catch(e) { console.error('[Guest] Failed to parse template', e); }
   }
 
   msgInput.addEventListener('keydown', function(e) {
@@ -142,6 +144,8 @@ export const DEFAULT_GUEST_HTML = `<!DOCTYPE html>
   window.addEventListener('message', function(e) {
     const data = e.data;
     if (!data || !data.action) return;
+    
+    console.log('[Guest] Received from host:', data.action, data.payload);
 
     if (data.action === 'initChat') {
       msgList.innerHTML = '';
@@ -168,6 +172,13 @@ export const DEFAULT_GUEST_HTML = `<!DOCTYPE html>
     } else if (data.action === 'streamEnd') {
       isStreaming = false;
       typingEl.style.display = 'none';
+      if (streamBubble && data.payload.message) {
+        streamBubble.dataset.id = data.payload.message.id;
+        const timeDiv = document.createElement('div');
+        timeDiv.className = 'msg-time';
+        timeDiv.textContent = formatTime(data.payload.message.timestamp);
+        streamBubble.appendChild(timeDiv);
+      }
       streamBubble = null;
     } else if (data.action === 'streamError') {
       isStreaming = false;
@@ -181,7 +192,8 @@ export const DEFAULT_GUEST_HTML = `<!DOCTYPE html>
     }
   });
 
+  console.log('[Guest] Ready, sending guestReady');
   sendToHost('guestReady', {});
 </script>
 </body>
-</html>`;
+</html>
