@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, MessageSquarePlus } from "lucide-react";
-import { AVATARS, useAgentsStore } from "@/stores/agents-store";
+import { EmojiPicker } from "@/components/EmojiPicker";
+import { useAgentsStore } from "@/stores/agents-store";
 import { useChatsStore } from "@/stores/chats-store";
 
 export function ChatCreatePage() {
@@ -11,6 +12,7 @@ export function ChatCreatePage() {
   const [icon, setIcon] = useState("💬");
   const [title, setTitle] = useState("");
   const [agentId, setAgentId] = useState<string>(agents[0]?.id || "");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const selectedAgent = useMemo(
     () => agents.find((agent) => agent.id === agentId),
@@ -46,20 +48,22 @@ export function ChatCreatePage() {
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         <div>
           <label className="text-sm font-medium mb-2 block">Chat Icon</label>
-          <div className="flex flex-wrap gap-2">
-            {AVATARS.concat(["💬", "📌", "🧩", "📣", "📝"]).map((value) => (
-              <button
-                key={value}
-                onClick={() => setIcon(value)}
-                className={`h-10 w-10 rounded-full flex items-center justify-center text-lg transition-all ${
-                  icon === value
-                    ? "ring-2 ring-primary bg-primary/10 scale-110"
-                    : "bg-muted hover:bg-accent"
-                }`}
-              >
-                {value}
-              </button>
-            ))}
+          <div className="relative">
+            <button
+              onClick={() => setShowEmojiPicker((value) => !value)}
+              className="h-14 w-14 rounded-2xl border border-border bg-muted flex items-center justify-center text-2xl hover:bg-accent transition-colors"
+            >
+              {icon || "💬"}
+            </button>
+            {showEmojiPicker && (
+              <div className="absolute left-0 top-16 z-20">
+                <EmojiPicker
+                  value={icon}
+                  onChange={setIcon}
+                  onClose={() => setShowEmojiPicker(false)}
+                />
+              </div>
+            )}
           </div>
           <input
             type="text"

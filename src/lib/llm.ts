@@ -11,13 +11,15 @@ export interface LLMStreamCallbacks {
 
 export async function streamChatCompletion(
   apiKey: string,
+  provider: string,
   model: string,
   messages: LLMRequestMessage[],
   callbacks: LLMStreamCallbacks,
   signal?: AbortSignal
 ) {
-  const isAnthropic = model.startsWith("claude");
-  const isGemini = model.startsWith("gemini");
+  const normalizedProvider = provider.trim().toLowerCase();
+  const isAnthropic = normalizedProvider === "anthropic";
+  const isGemini = normalizedProvider === "gemini";
 
   let url: string;
   let headers: Record<string, string>;
@@ -56,9 +58,9 @@ export async function streamChatCompletion(
     };
   } else {
     url = "https://api.openai.com/v1/chat/completions";
-    if (model.startsWith("deepseek")) {
+    if (normalizedProvider === "deepseek") {
       url = "https://api.deepseek.com/v1/chat/completions";
-    } else if (model.startsWith("moonshot")) {
+    } else if (normalizedProvider === "moonshot") {
       url = "https://api.moonshot.cn/v1/chat/completions";
     }
     headers = {
@@ -74,6 +76,7 @@ export async function streamChatCompletion(
 
   try {
     console.debug("[llm] request", {
+      provider: normalizedProvider,
       model,
       url,
       messageCount: messages.length,
@@ -88,6 +91,7 @@ export async function streamChatCompletion(
     });
 
     console.debug("[llm] response", {
+      provider: normalizedProvider,
       model,
       url,
       status: res.status,
@@ -146,7 +150,7 @@ export async function streamChatCompletion(
       }
     }
 
-    console.debug("[llm] complete", { model, outputLength: fullText.length });
+    console.debug("[llm] complete", { provider: normalizedProvider, model, outputLength: fullText.length });
     callbacks.onDone(fullText);
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;

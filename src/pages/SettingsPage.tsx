@@ -1,18 +1,18 @@
 import { useConfigStore } from "@/stores/config-store";
 import { applyTheme } from "@/lib/theme";
+import { ApiKeyForm } from "@/components/settings/ApiKeyForm";
 import { Sun, Moon, Monitor, Plus, Trash2, Eye, EyeOff, Info } from "lucide-react";
 import { useState } from "react";
 import type { Theme } from "@/types";
+import { getDefaultModelForProvider } from "@/lib/providers";
 
 export function SettingsPage() {
-  const { theme, setTheme, apiKeys, addApiKey, removeApiKey } =
+  const { theme, setTheme, apiKeys, addApiKey, updateApiKey, removeApiKey } =
     useConfigStore();
   const [showAbout, setShowAbout] = useState(false);
   const [showAddKey, setShowAddKey] = useState(false);
-  const [newKeyName, setNewKeyName] = useState("");
-  const [newKeyValue, setNewKeyValue] = useState("");
-  const [newKeyProvider, setNewKeyProvider] = useState("openai");
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
+  const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
 
   const themes: { value: Theme; label: string; icon: typeof Sun }[] = [
     { value: "light", label: "Light", icon: Sun },
@@ -23,14 +23,6 @@ export function SettingsPage() {
   function handleThemeChange(t: Theme) {
     setTheme(t);
     applyTheme(t);
-  }
-
-  function handleAddKey() {
-    if (!newKeyName.trim() || !newKeyValue.trim()) return;
-    addApiKey(newKeyName.trim(), newKeyValue.trim(), newKeyProvider);
-    setNewKeyName("");
-    setNewKeyValue("");
-    setShowAddKey(false);
   }
 
   function toggleKeyVisibility(id: string) {
@@ -93,39 +85,21 @@ export function SettingsPage() {
           </div>
 
           {showAddKey && (
-            <div className="p-3 mb-3 rounded-lg border border-border space-y-2">
-              <input
-                type="text"
-                value={newKeyName}
-                onChange={(e) => setNewKeyName(e.target.value)}
-                placeholder="Key name (e.g. My OpenAI Key)"
-                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            <div className="mb-3">
+              <ApiKeyForm
+                initialValues={{
+                  name: "",
+                  key: "",
+                  provider: "openai",
+                  model: getDefaultModelForProvider("openai"),
+                }}
+                onSubmit={(values) => {
+                  addApiKey(values.name, values.key, values.provider, values.model);
+                  setShowAddKey(false);
+                }}
+                onCancel={() => setShowAddKey(false)}
+                submitLabel="Add Key"
               />
-              <select
-                value={newKeyProvider}
-                onChange={(e) => setNewKeyProvider(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="deepseek">DeepSeek</option>
-                <option value="moonshot">Moonshot</option>
-                <option value="gemini">Google Gemini</option>
-              </select>
-              <input
-                type="password"
-                value={newKeyValue}
-                onChange={(e) => setNewKeyValue(e.target.value)}
-                placeholder="API Key (sk-...)"
-                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <button
-                onClick={handleAddKey}
-                disabled={!newKeyName.trim() || !newKeyValue.trim()}
-                className="w-full py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
-              >
-                Add Key
-              </button>
             </div>
           )}
 
@@ -136,35 +110,63 @@ export function SettingsPage() {
           ) : (
             <div className="space-y-2">
               {apiKeys.map((k) => (
-                <div
-                  key={k.id}
-                  className="flex items-center gap-2 p-3 rounded-lg border border-border"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{k.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {k.provider} ·{" "}
-                      {visibleKeys.has(k.id)
-                        ? k.key
-                        : k.key.slice(0, 8) + "••••••••"}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => toggleKeyVisibility(k.id)}
-                    className="p-1.5 rounded-full hover:bg-accent text-muted-foreground"
-                  >
-                    {visibleKeys.has(k.id) ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => removeApiKey(k.id)}
-                    className="p-1.5 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                <div key={k.id} className="p-3 rounded-lg border border-border space-y-3">
+                  {editingKeyId === k.id ? (
+                    <ApiKeyForm
+                      initialValues={{
+                        name: k.name,
+                        key: k.key,
+                        provider: k.provider,
+                        model: k.model,
+                      }}
+                      onSubmit={(values) => {
+                        updateApiKey(k.id, values);
+                        setEditingKeyId(null);
+                      }}
+                      onCancel={() => setEditingKeyId(null)}
+                      submitLabel="Save"
+                    />
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{k.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {k.provider} · {k.model}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate mt-1">
+                            {visibleKeys.has(k.id)
+                              ? k.key
+                              : k.key.slice(0, 8) + "••••••••"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => toggleKeyVisibility(k.id)}
+                          className="p-1.5 rounded-full hover:bg-accent text-muted-foreground"
+                        >
+                          {visibleKeys.has(k.id) ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setEditingKeyId(k.id)}
+                          className="flex-1 py-2 rounded-md border border-border text-sm font-medium hover:bg-accent"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => removeApiKey(k.id)}
+                          className="px-3 py-2 rounded-md border border-destructive text-destructive text-sm font-medium hover:bg-destructive/5"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

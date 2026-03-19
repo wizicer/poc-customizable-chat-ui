@@ -16,6 +16,11 @@
       height: 100%;
       overflow: hidden;
     }
+    #top-injection-anchor {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
     #message-list {
       flex: 1;
       overflow-y: auto;
@@ -41,7 +46,6 @@
     .msg-bubble {
       border-radius: 18px;
       padding: 12px 14px;
-      white-space: pre-wrap;
       word-break: break-word;
       line-height: 1.5;
       box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
@@ -64,46 +68,6 @@
       font-size: 11px;
       color: #94a3b8;
       padding: 0 4px;
-    }
-    #typing-indicator {
-      display: none;
-      padding: 0 16px 10px;
-      color: #64748b;
-      font-size: 12px;
-    }
-    .input-area {
-      display: flex;
-      gap: 10px;
-      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
-      border-top: 1px solid #e5e7eb;
-      background: rgba(255, 255, 255, 0.96);
-      backdrop-filter: blur(16px);
-    }
-    .input-area input {
-      flex: 1;
-      border: 1px solid #cbd5e1;
-      background: #ffffff;
-      border-radius: 999px;
-      padding: 12px 14px;
-      font-size: 14px;
-      outline: none;
-    }
-    .input-area input:focus {
-      border-color: #2563eb;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-    }
-    .input-area button {
-      border: none;
-      background: #2563eb;
-      color: #ffffff;
-      border-radius: 999px;
-      padding: 0 18px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .input-area button:disabled {
-      cursor: not-allowed;
-      opacity: 0.5;
     }
     .template-card {
       cursor: pointer;
@@ -130,34 +94,76 @@
       opacity: 0.92;
       line-height: 1.4;
     }
+    #typing-indicator {
+      display: none;
+      padding: 0 16px 10px;
+      color: #64748b;
+      font-size: 12px;
+    }
+    .input-area {
+      display: flex;
+      gap: 10px;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid #e5e7eb;
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(16px);
+      align-items: center;
+    }
+    .input-area input {
+      flex: 1;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      border-radius: 999px;
+      padding: 12px 14px;
+      font-size: 14px;
+      outline: none;
+    }
+    .input-area input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+    .input-area button {
+      border: none;
+      background: #2563eb;
+      color: #ffffff;
+      border-radius: 999px;
+      padding: 0 18px;
+      height: 44px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .input-area button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
   </style>
-  <style id="template-styles"></style>
+  <style id="dynamic-plugin-styles"></style>
 </head>
 <body>
+  <div id="top-injection-anchor"></div>
   <div id="message-list"></div>
   <div id="typing-indicator">Assistant is responding...</div>
-  <div class="input-area">
+  <div class="input-area" id="bottom-injection-anchor">
     <input id="msg-input" type="text" placeholder="Send a message or type HTML for a debug template" />
     <button id="send-btn" type="button">Send</button>
   </div>
 
   <script>
+    const params = new URLSearchParams(window.location.search);
+    const chatId = params.get("chatId") || "";
+    const pluginStorageKey = chatId ? `chat-plugin-bundle:${chatId}` : "";
     const messageList = document.getElementById("message-list");
     const msgInput = document.getElementById("msg-input");
     const sendBtn = document.getElementById("send-btn");
     const typingIndicator = document.getElementById("typing-indicator");
-    const templateStyles = document.getElementById("template-styles");
+    const dynamicPluginStyles = document.getElementById("dynamic-plugin-styles");
     let streamElement = null;
     let streamText = "";
     let isStreaming = false;
+    let activePlugins = [];
 
-    function log(...args) {
-      console.debug("[guest-chat]", ...args);
-    }
-
-    function sendToHost(action, payload) {
-      log("postMessage -> host", action, payload);
-      window.parent.postMessage({ action, payload }, "*");
+    function log() {
+      console.debug("[guest-chat]", ...arguments);
     }
 
     function escapeHtml(text) {
@@ -178,6 +184,57 @@
       });
     }
 
+    window.ChatAPI = {
+      events: {},
+      filters: {},
+      on(event, callback) {
+        if (!this.events[event]) this.events[event] = [];
+        this.events[event].push(callback);
+      },
+      emit(event, payload) {
+        (this.events[event] || []).forEach((callback) => callback(payload));
+      },
+      addFilter(name, callback) {
+        if (!this.filters[name]) this.filters[name] = [];
+        this.filters[name].push(callback);
+      },
+      applyFilter(name, value) {
+        let result = value;
+        (this.filters[name] || []).forEach((callback) => {
+          result = callback(result);
+        });
+        return result;
+      },
+      sendToHost(action, payload) {
+        log("postMessage -> host", action, payload);
+        window.parent.postMessage({ action, payload }, "*");
+      }
+    };
+
+    window.ChatAPI.addFilter("render:text", (text) => {
+      return escapeHtml(String(text ?? "")).replace(/\n/g, "<br />");
+    });
+
+    function loadPlugins() {
+      if (!pluginStorageKey) return;
+      try {
+        activePlugins = JSON.parse(localStorage.getItem(pluginStorageKey) || "[]");
+      } catch (error) {
+        log("plugin parse error", error);
+        activePlugins = [];
+      }
+      dynamicPluginStyles.textContent = activePlugins.map((plugin) => plugin.css || "").join("\n\n");
+      activePlugins.forEach((plugin) => {
+        if (!plugin.js) return;
+        try {
+          window.eval(plugin.js);
+        } catch (error) {
+          log("plugin eval error", plugin.id, error);
+        }
+      });
+      log("plugins loaded", activePlugins.map((plugin) => plugin.id));
+    }
+
     function createTemplateMarkup(templateData) {
       return [
         '<div class="template-card">',
@@ -196,13 +253,10 @@
         ? messageList.querySelector('[data-id="' + CSS.escape(message.id) + '"]')
         : null;
       const existing = existingByClientId || existingById;
-
-      let node = existing || document.createElement("div");
+      const node = existing || document.createElement("div");
       node.className = "msg " + message.role + (message.pending ? " pending" : "");
       if (message.id) node.dataset.id = message.id;
       if (message.clientMessageId) node.dataset.clientId = message.clientMessageId;
-      if (!message.pending) delete node.dataset.pending;
-      if (message.pending) node.dataset.pending = "true";
 
       if (message.isTemplate && message.templateData) {
         let parsed = null;
@@ -213,12 +267,13 @@
         }
         node.innerHTML = parsed ? createTemplateMarkup(parsed) : '<div class="msg-bubble">' + escapeHtml(message.content) + '</div>';
         node.onclick = parsed
-          ? () => sendToHost("installTemplate", { templateData: parsed })
+          ? () => window.ChatAPI.sendToHost("installTemplate", { templateData: parsed })
           : null;
       } else {
         node.onclick = null;
+        const filtered = window.ChatAPI.applyFilter("render:text", message.content);
         node.innerHTML = [
-          '<div class="msg-bubble">' + escapeHtml(message.content) + '</div>',
+          '<div class="msg-bubble">' + filtered + '</div>',
           '<div class="msg-time">' + formatTime(message.timestamp) + '</div>'
         ].join("");
       }
@@ -236,12 +291,6 @@
       streamText = "";
       messages.forEach(renderMessage);
       scrollToBottom();
-    }
-
-    function applyTemplates(templates) {
-      const css = (templates || []).map((template) => template.css || "").join("\n\n");
-      templateStyles.textContent = css;
-      log("applied templates", templates);
     }
 
     function createPendingUserMessage(text, clientMessageId) {
@@ -263,7 +312,7 @@
         : String(Date.now()) + "-" + Math.random().toString(16).slice(2);
       renderMessage(createPendingUserMessage(text, clientMessageId));
       msgInput.value = "";
-      sendToHost("sendMessage", { text, clientMessageId });
+      window.ChatAPI.sendToHost("sendMessage", { text, clientMessageId });
     }
 
     sendBtn.addEventListener("click", sendMessage);
@@ -281,15 +330,10 @@
 
       if (data.action === "initChat") {
         resetMessages(data.payload?.messages || []);
-        applyTemplates(data.payload?.templates || []);
       }
 
       if (data.action === "appendMessage" && data.payload?.message) {
         renderMessage(data.payload.message);
-      }
-
-      if (data.action === "setTemplates") {
-        applyTemplates(data.payload?.templates || []);
       }
 
       if (data.action === "streamStart") {
@@ -306,7 +350,9 @@
       if (data.action === "streamToken" && streamElement && data.payload?.token) {
         streamText += data.payload.token;
         const bubble = streamElement.querySelector(".msg-bubble");
-        if (bubble) bubble.textContent = streamText;
+        if (bubble) {
+          bubble.innerHTML = window.ChatAPI.applyFilter("render:text", streamText);
+        }
         scrollToBottom();
       }
 
@@ -338,8 +384,10 @@
       }
     });
 
+    loadPlugins();
+    window.ChatAPI.emit("core:mounted", {});
     log("guest ready");
-    sendToHost("guestReady", {});
+    window.ChatAPI.sendToHost("guestReady", {});
   </script>
 </body>
 </html>

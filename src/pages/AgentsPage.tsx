@@ -1,12 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { useAgentsStore } from "@/stores/agents-store";
-import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Plus } from "lucide-react";
 
 export function AgentsPage() {
   const navigate = useNavigate();
-  const { agents, removeAgent } = useAgentsStore();
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const { agents } = useAgentsStore();
 
   return (
     <div className="flex flex-col h-full">
@@ -42,26 +40,6 @@ export function AgentsPage() {
                   {agent.systemPrompt || "No system prompt"}
                 </p>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirmDeleteId === agent.id) {
-                    removeAgent(agent.id);
-                    setConfirmDeleteId(null);
-                  } else {
-                    setConfirmDeleteId(agent.id);
-                    setTimeout(() => setConfirmDeleteId(null), 3000);
-                  }
-                }}
-                className="p-2 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-              {confirmDeleteId === agent.id && (
-                <span className="text-xs text-destructive shrink-0">
-                  Tap again
-                </span>
-              )}
             </div>
           ))
         )}

@@ -4,6 +4,8 @@ import { useAgentsStore } from "@/stores/agents-store";
 import { useConfigStore } from "@/stores/config-store";
 import { useMessagesStore } from "@/stores/messages-store";
 import { streamChatCompletion, type LLMRequestMessage } from "@/lib/llm";
+import { EmojiPicker } from "@/components/EmojiPicker";
+import { getDefaultModelForProvider, inferProviderFromModel } from "@/lib/providers";
 import type { ChatTemplate, Message } from "@/types";
 import { ChevronLeft, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,38 +18,45 @@ interface GuestPayload {
 
 const DEBUG_HTML_TEMPLATE: ChatTemplate = {
   id: "debug-html-template",
-  name: "Aurora Topic Theme",
-  description: "A built-in debug template that changes the chat appearance immediately.",
-  css: `
-body {
-  background: linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%);
-  color: #e2e8f0;
-}
-.msg.assistant .msg-bubble {
-  background: rgba(30, 41, 59, 0.92);
-  border-color: rgba(129, 140, 248, 0.3);
-  color: #f8fafc;
-}
-.msg.user .msg-bubble {
-  background: linear-gradient(135deg, #06b6d4 0%, #6366f1 100%);
-}
-.input-area {
-  background: rgba(15, 23, 42, 0.88);
-  border-top-color: rgba(148, 163, 184, 0.2);
-}
-.input-area input {
-  background: rgba(15, 23, 42, 0.9);
-  color: #f8fafc;
-  border-color: rgba(99, 102, 241, 0.35);
-}
-.input-area input::placeholder {
-  color: #94a3b8;
-}
-`,
+  name: "Reference Theme Plugin",
+  description: "Filter + UI injection plugin, following the reference plugin architecture.",
+  css: `.plugin-badge { margin: 0 16px 12px; padding: 10px 12px; border-radius: 12px; background: rgba(79, 70, 229, 0.12); color: #4338ca; font-size: 12px; font-weight: 600; }
+.plugin-ui-btn { padding: 10px 14px; background: #ff4d4f; color: white; border: none; border-radius: 999px; cursor: pointer; font-weight: 700; }`,
+  js: `
+window.ChatAPI.addFilter('render:text', (text) => {
+  let safeText = String(text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  safeText = safeText.replace(/(BUG|报错)/gi, "<strong style='color:#ef4444;font-size:1.05em;'>$1</strong>");
+  return safeText;
+});
+window.ChatAPI.on('core:mounted', () => {
+  const topAnchor = document.getElementById('top-injection-anchor');
+  if (topAnchor && !document.getElementById('reference-plugin-badge')) {
+    const badge = document.createElement('div');
+    badge.id = 'reference-plugin-badge';
+    badge.className = 'plugin-badge';
+    badge.textContent = 'Reference plugin loaded';
+    topAnchor.appendChild(badge);
+  }
+  const bottomAnchor = document.getElementById('bottom-injection-anchor');
+  if (bottomAnchor && !document.getElementById('reference-plugin-button')) {
+    const button = document.createElement('button');
+    button.id = 'reference-plugin-button';
+    button.className = 'plugin-ui-btn';
+    button.textContent = '🚨 Send plugin alert';
+    button.addEventListener('click', () => {
+      window.ChatAPI.sendToHost('sendMessage', { text: '[Plugin Alert] Reference template button clicked' });
+    });
+    bottomAnchor.appendChild(button);
+  }
+});`,
 };
 
-function createGuestUrl() {
-  return `/guest-chat.html?t=${Date.now()}`;
+function createGuestUrl(chatId: string, reloadKey: number) {
+  return `/guest-chat.html?chatId=${encodeURIComponent(chatId)}&reload=${reloadKey}`;
+}
+
+function getPluginStorageKey(chatId: string) {
+  return `chat-plugin-bundle:${chatId}`;
 }
 
 export function ChatDetailPage() {
@@ -65,7 +74,8 @@ export function ChatDetailPage() {
   const pendingMessagesRef = useRef<Array<{ action: string; payload?: unknown }>>([]);
   const iframeReadyRef = useRef(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [iframeUrl] = useState(() => createGuestUrl());
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const activeTemplates = useMemo(() => {
     if (!chat) return [];
@@ -73,6 +83,11 @@ export function ChatDetailPage() {
       chat.enabledTemplateIds.includes(template.id)
     );
   }, [chat]);
+
+  const iframeUrl = useMemo(() => {
+    if (!id) return "about:blank";
+    return createGuestUrl(id, reloadKey);
+  }, [id, reloadKey]);
 
   const log = useCallback((...args: unknown[]) => {
     console.debug("[chat-detail]", ...args);
@@ -127,14 +142,25 @@ export function ChatDetailPage() {
     flushPendingGuestMessages();
   }, [activeTemplates, buildGuestMessages, chat, flushPendingGuestMessages, getMessages, id, log, postToIframe]);
 
-  const resolveApiKey = useCallback((): string | null => {
+  const resolveApiConfig = useCallback(() => {
     if (agent?.apiKeyId) {
-      const found = apiKeys.find((entry) => entry.id === agent.apiKeyId);
-      return found?.key || null;
+      const selected = apiKeys.find((entry) => entry.id === agent.apiKeyId);
+      if (selected) {
+        return { apiKey: selected.key, provider: selected.provider, model: selected.model };
+      }
     }
-    if (agent?.oneTimeApiKey) return agent.oneTimeApiKey;
-    return apiKeys[0]?.key || null;
-  }, [agent, apiKeys]);
+    if (agent?.oneTimeApiKey) {
+      const provider = inferProviderFromModel(defaultModel);
+      return {
+        apiKey: agent.oneTimeApiKey,
+        provider,
+        model: defaultModel || getDefaultModelForProvider(provider),
+      };
+    }
+    const fallback = apiKeys[0];
+    if (!fallback) return null;
+    return { apiKey: fallback.key, provider: fallback.provider, model: fallback.model };
+  }, [agent, apiKeys, defaultModel]);
 
   const appendAssistantMessage = useCallback(
     (content: string, extra?: Partial<Message>) => {
@@ -164,7 +190,7 @@ export function ChatDetailPage() {
     (template: ChatTemplate) => {
       if (!id || !chat) return;
       const installedTemplates = chat.installedTemplates.some((entry) => entry.id === template.id)
-        ? chat.installedTemplates
+        ? chat.installedTemplates.map((entry) => (entry.id === template.id ? template : entry))
         : [...chat.installedTemplates, template];
       const enabledTemplateIds = chat.enabledTemplateIds.includes(template.id)
         ? chat.enabledTemplateIds
@@ -201,15 +227,15 @@ export function ChatDetailPage() {
       });
 
       if (trimmed.toUpperCase() === "HTML") {
-        appendAssistantMessage("Built-in template ready.", {
+        appendAssistantMessage("Reference template plugin ready.", {
           isTemplate: true,
           templateData: JSON.stringify(DEBUG_HTML_TEMPLATE),
         });
         return;
       }
 
-      const apiKey = resolveApiKey();
-      if (!apiKey) {
+      const apiConfig = resolveApiConfig();
+      if (!apiConfig) {
         appendAssistantMessage("No API key configured. Please set one in Settings or Agent config.");
         return;
       }
@@ -234,7 +260,8 @@ export function ChatDetailPage() {
       });
 
       log("api request", {
-        model: defaultModel,
+        provider: apiConfig.provider,
+        model: apiConfig.model,
         messageCount: requestMessages.length,
         providerAgent: agent.name,
       });
@@ -247,8 +274,9 @@ export function ChatDetailPage() {
       postToIframe("streamStart", {});
 
       await streamChatCompletion(
-        apiKey,
-        defaultModel,
+        apiConfig.apiKey,
+        apiConfig.provider,
+        apiConfig.model,
         requestMessages,
         {
           onToken: (token) => {
@@ -281,17 +309,15 @@ export function ChatDetailPage() {
         controller.signal
       );
     },
-    [addMessage, agent, appendAssistantMessage, chat, defaultModel, getMessages, id, log, postToIframe, resolveApiKey, updateChat, updateMessage]
+    [addMessage, agent, appendAssistantMessage, chat, getMessages, id, log, postToIframe, resolveApiConfig, updateChat, updateMessage]
   );
 
   useEffect(() => {
+    if (!id) return;
+    localStorage.setItem(getPluginStorageKey(id), JSON.stringify(activeTemplates));
     iframeReadyRef.current = false;
-  }, [iframeUrl]);
-
-  useEffect(() => {
-    if (!chat) return;
-    postToIframe("setTemplates", { templates: activeTemplates });
-  }, [activeTemplates, chat, postToIframe]);
+    setReloadKey((value) => value + 1);
+  }, [activeTemplates, id]);
 
   useEffect(() => {
     function handleWindowMessage(event: MessageEvent) {
@@ -349,6 +375,34 @@ export function ChatDetailPage() {
       {showSettings && (
         <div className="border-b border-border bg-card p-3 space-y-4 shrink-0 max-h-[45vh] overflow-y-auto">
           <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-2">Topic Icon</label>
+            <div className="relative">
+              <button
+                onClick={() => setShowEmojiPicker((value) => !value)}
+                className="h-12 w-12 rounded-2xl border border-border bg-muted flex items-center justify-center text-2xl hover:bg-accent transition-colors"
+              >
+                {chat.icon || "💬"}
+              </button>
+              {showEmojiPicker && (
+                <div className="absolute left-0 top-14 z-20">
+                  <EmojiPicker
+                    value={chat.icon}
+                    onChange={(emoji) => updateChat(id, { icon: emoji })}
+                    onClose={() => setShowEmojiPicker(false)}
+                  />
+                </div>
+              )}
+            </div>
+            <input
+              type="text"
+              value={chat.icon}
+              onChange={(event) => updateChat(id, { icon: event.target.value })}
+              placeholder="Pick or type a custom icon"
+              className="w-full mt-3 px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          <div>
             <label className="text-xs font-medium text-muted-foreground block mb-1">Context Prompt</label>
             <textarea
               value={chat.contextPrompt}
@@ -382,7 +436,7 @@ export function ChatDetailPage() {
             <label className="text-xs font-medium text-muted-foreground block mb-2">Installed Templates</label>
             {chat.installedTemplates.length === 0 ? (
               <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-3">
-                No templates installed yet. Send `HTML` in the chat to generate a debug template card.
+                No templates installed yet. Send `HTML` in the chat to generate a reference plugin template.
               </div>
             ) : (
               <div className="space-y-2">

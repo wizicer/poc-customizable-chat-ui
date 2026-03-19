@@ -16,7 +16,11 @@ function normalizeChat(chat: Partial<Chat>): Chat {
     contextPrompt: chat.contextPrompt || "",
     memoryEnabled: chat.memoryEnabled ?? true,
     memoryPrompt: chat.memoryPrompt || "",
-    installedTemplates: chat.installedTemplates || [],
+    installedTemplates: (chat.installedTemplates || []).map((template) => ({
+      ...template,
+      css: template.css || "",
+      js: template.js || "",
+    })),
     enabledTemplateIds: chat.enabledTemplateIds || [],
   };
 }

@@ -1,20 +1,23 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useAgentsStore, AVATARS } from "@/stores/agents-store";
+import { useAgentsStore } from "@/stores/agents-store";
 import { useChatsStore } from "@/stores/chats-store";
 import { useConfigStore } from "@/stores/config-store";
-import { ChevronLeft, MessageSquare } from "lucide-react";
+import { EmojiPicker } from "@/components/EmojiPicker";
+import { ChevronLeft, MessageSquare, Trash2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import type { Agent } from "@/types";
 
 export function AgentEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { addAgent, updateAgent, getAgent } = useAgentsStore();
+  const { addAgent, updateAgent, getAgent, removeAgent } = useAgentsStore();
   const { createChat } = useChatsStore();
   const { apiKeys } = useConfigStore();
 
   const isNew = id === "new";
   const existing = isNew ? undefined : getAgent(id!);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [form, setForm] = useState<Omit<Agent, "id">>({
     name: "",
@@ -60,6 +63,17 @@ export function AgentEditPage() {
     navigate(`/chat/${chatId}`, { replace: true });
   }
 
+  function handleDelete() {
+    if (!id || isNew) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      window.setTimeout(() => setConfirmDelete(false), 3000);
+      return;
+    }
+    removeAgent(id);
+    navigate("/agents", { replace: true });
+  }
+
   return (
     <div className="flex flex-col h-full">
       <header className="flex items-center gap-2 px-4 py-3 border-b border-border bg-card">
@@ -81,23 +95,24 @@ export function AgentEditPage() {
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Avatar */}
         <div>
           <label className="text-sm font-medium mb-2 block">Avatar</label>
-          <div className="flex flex-wrap gap-2">
-            {AVATARS.map((a) => (
-              <button
-                key={a}
-                onClick={() => setForm({ ...form, avatar: a })}
-                className={`h-10 w-10 rounded-full flex items-center justify-center text-lg transition-all ${
-                  form.avatar === a
-                    ? "ring-2 ring-primary bg-primary/10 scale-110"
-                    : "bg-muted hover:bg-accent"
-                }`}
-              >
-                {a}
-              </button>
-            ))}
+          <div className="relative">
+            <button
+              onClick={() => setShowEmojiPicker((value) => !value)}
+              className="h-14 w-14 rounded-2xl border border-border bg-muted flex items-center justify-center text-2xl hover:bg-accent transition-colors"
+            >
+              {form.avatar || "🤖"}
+            </button>
+            {showEmojiPicker && (
+              <div className="absolute left-0 top-16 z-20">
+                <EmojiPicker
+                  value={form.avatar}
+                  onChange={(emoji) => setForm({ ...form, avatar: emoji })}
+                  onClose={() => setShowEmojiPicker(false)}
+                />
+              </div>
+            )}
           </div>
           <input
             type="text"
@@ -108,7 +123,6 @@ export function AgentEditPage() {
           />
         </div>
 
-        {/* Name */}
         <div>
           <label className="text-sm font-medium mb-1 block">Agent Name</label>
           <input
@@ -120,7 +134,6 @@ export function AgentEditPage() {
           />
         </div>
 
-        {/* System Prompt */}
         <div>
           <label className="text-sm font-medium mb-1 block">
             System Prompt
@@ -136,7 +149,6 @@ export function AgentEditPage() {
           />
         </div>
 
-        {/* API Key Selection */}
         <div>
           <label className="text-sm font-medium mb-1 block">API Key</label>
           <select
@@ -155,7 +167,6 @@ export function AgentEditPage() {
           </select>
         </div>
 
-        {/* One-time API Key */}
         {!form.apiKeyId && (
           <div>
             <label className="text-sm font-medium mb-1 block">
@@ -173,7 +184,6 @@ export function AgentEditPage() {
           </div>
         )}
 
-        {/* Custom HTML */}
         <div>
           <label className="text-sm font-medium mb-1 block">
             Custom Chat HTML (optional)
@@ -189,7 +199,6 @@ export function AgentEditPage() {
           />
         </div>
 
-        {/* Start Chat */}
         <button
           onClick={handleStartChat}
           disabled={!form.name.trim()}
@@ -198,6 +207,16 @@ export function AgentEditPage() {
           <MessageSquare className="h-4 w-4" />
           Start Chat
         </button>
+
+        {!isNew && (
+          <button
+            onClick={handleDelete}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-md border border-destructive text-destructive font-medium hover:bg-destructive/5"
+          >
+            <Trash2 className="h-4 w-4" />
+            {confirmDelete ? "Tap again to delete" : "Delete Agent"}
+          </button>
+        )}
       </div>
     </div>
   );

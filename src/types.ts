@@ -3,6 +3,7 @@ export interface ApiKeyEntry {
   name: string;
   key: string;
   provider: string;
+  model: string;
 }
 
 export interface Agent {
@@ -20,6 +21,7 @@ export interface ChatTemplate {
   name: string;
   description: string;
   css: string;
+  js: string;
 }
 
 export interface Chat {
