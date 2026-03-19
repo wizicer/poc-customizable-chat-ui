@@ -73,6 +73,13 @@ export async function streamChatCompletion(
   }
 
   try {
+    console.debug("[llm] request", {
+      model,
+      url,
+      messageCount: messages.length,
+      roles: messages.map((message) => message.role),
+    });
+
     const res = await fetch(url, {
       method: "POST",
       headers,
@@ -80,8 +87,16 @@ export async function streamChatCompletion(
       signal,
     });
 
+    console.debug("[llm] response", {
+      model,
+      url,
+      status: res.status,
+      ok: res.ok,
+    });
+
     if (!res.ok) {
       const errText = await res.text();
+      console.error("[llm] response error", errText);
       throw new Error(`API Error ${res.status}: ${errText}`);
     }
 
@@ -125,15 +140,17 @@ export async function streamChatCompletion(
             fullText += token;
             callbacks.onToken(token);
           }
-        } catch {
-          // skip malformed JSON chunks
+        } catch (error) {
+          console.debug("[llm] skipped chunk", { data, error });
         }
       }
     }
 
+    console.debug("[llm] complete", { model, outputLength: fullText.length });
     callbacks.onDone(fullText);
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;
+    console.error("[llm] request failed", err);
     callbacks.onError(err instanceof Error ? err : new Error(String(err)));
   }
 }

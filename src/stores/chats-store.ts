@@ -3,15 +3,31 @@ import { persist } from "zustand/middleware";
 import type { Chat } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 
+function normalizeChat(chat: Partial<Chat>): Chat {
+  return {
+    id: chat.id || uuidv4(),
+    agentId: chat.agentId || "",
+    icon: chat.icon || "💬",
+    title: chat.title || "Untitled Topic",
+    lastMessage: chat.lastMessage || "",
+    lastMessageTime: chat.lastMessageTime || Date.now(),
+    unread: chat.unread || false,
+    customHtml: chat.customHtml || "",
+    contextPrompt: chat.contextPrompt || "",
+    memoryEnabled: chat.memoryEnabled ?? true,
+    memoryPrompt: chat.memoryPrompt || "",
+    installedTemplates: chat.installedTemplates || [],
+    enabledTemplateIds: chat.enabledTemplateIds || [],
+  };
+}
+
 interface ChatsState {
   chats: Chat[];
-  createChat: (agentId: string, agentName: string) => string;
+  createChat: (data: Pick<Chat, "agentId" | "icon" | "title">) => string;
   updateChat: (id: string, data: Partial<Omit<Chat, "id">>) => void;
   removeChat: (id: string) => void;
   getChat: (id: string) => Chat | undefined;
-  addTemplate: (chatId: string, name: string, html: string) => void;
-  toggleTemplate: (chatId: string, templateId: string) => void;
-  removeTemplate: (chatId: string, templateId: string) => void;
+  resetChatUI: (id: string) => void;
 }
 
 export const useChatsStore = create<ChatsState>()(
@@ -19,18 +35,22 @@ export const useChatsStore = create<ChatsState>()(
     (set, get) => ({
       chats: [],
 
-      createChat: (agentId, agentName) => {
+      createChat: ({ agentId, icon, title }) => {
         const id = uuidv4();
         const chat: Chat = {
           id,
           agentId,
-          title: agentName,
-          icon: "💬",
+          icon,
+          title,
           lastMessage: "",
           lastMessageTime: Date.now(),
           unread: false,
-          templates: [],
+          customHtml: "",
           contextPrompt: "",
+          memoryEnabled: true,
+          memoryPrompt: "",
+          installedTemplates: [],
+          enabledTemplateIds: [],
         };
         set((s) => ({ chats: [chat, ...s.chats] }));
         return id;
@@ -46,49 +66,24 @@ export const useChatsStore = create<ChatsState>()(
 
       getChat: (id) => get().chats.find((c) => c.id === id),
 
-      addTemplate: (chatId, name, html) => {
-        const templateId = uuidv4();
+      resetChatUI: (id) =>
         set((s) => ({
           chats: s.chats.map((c) =>
-            c.id === chatId
-              ? {
-                  ...c,
-                  templates: [
-                    ...c.templates,
-                    { id: templateId, name, html, enabled: false },
-                  ],
-                }
-              : c
-          ),
-        }));
-      },
-
-      toggleTemplate: (chatId, templateId) =>
-        set((s) => ({
-          chats: s.chats.map((c) =>
-            c.id === chatId
-              ? {
-                  ...c,
-                  templates: c.templates.map((t) =>
-                    t.id === templateId ? { ...t, enabled: !t.enabled } : t
-                  ),
-                }
-              : c
-          ),
-        })),
-
-      removeTemplate: (chatId, templateId) =>
-        set((s) => ({
-          chats: s.chats.map((c) =>
-            c.id === chatId
-              ? {
-                  ...c,
-                  templates: c.templates.filter((t) => t.id !== templateId),
-                }
+            c.id === id
+              ? { ...c, customHtml: "", enabledTemplateIds: [] }
               : c
           ),
         })),
     }),
-    { name: "chat-chats" }
+    {
+      name: "chat-chats",
+      version: 2,
+      migrate: (persistedState) => {
+        const state = persistedState as { chats?: Partial<Chat>[] } | undefined;
+        return {
+          chats: (state?.chats || []).map((chat) => normalizeChat(chat)),
+        };
+      },
+    }
   )
 );

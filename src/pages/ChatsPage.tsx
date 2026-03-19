@@ -2,12 +2,12 @@ import { useNavigate } from "react-router-dom";
 import { useChatsStore } from "@/stores/chats-store";
 import { useAgentsStore } from "@/stores/agents-store";
 import { useMessagesStore } from "@/stores/messages-store";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, RotateCcw } from "lucide-react";
 import { useState } from "react";
 
 export function ChatsPage() {
   const navigate = useNavigate();
-  const { chats, removeChat } = useChatsStore();
+  const { chats, removeChat, resetChatUI } = useChatsStore();
   const { agents } = useAgentsStore();
   const { clearMessages } = useMessagesStore();
   const [swipedId, setSwipedId] = useState<string | null>(null);
@@ -35,9 +35,9 @@ export function ChatsPage() {
       <div className="flex-1 overflow-y-auto">
         {sortedChats.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 p-8">
-            <p className="text-lg font-medium">No chats yet</p>
+            <p className="text-lg font-medium">No topic chats yet</p>
             <p className="text-sm text-center">
-              Go to Agents tab to create an agent and start chatting
+              Tap the plus button to create a new topic and choose an agent
             </p>
           </div>
         ) : (
@@ -60,7 +60,7 @@ export function ChatsPage() {
                   }}
                 >
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-xl shrink-0">
-                    {chat.icon}
+                    {chat.icon || agent?.avatar || "💬"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
@@ -84,11 +84,21 @@ export function ChatsPage() {
                   <div className="absolute right-0 top-0 bottom-0 flex border-b border-border">
                     <button
                       onClick={() => {
+                        resetChatUI(chat.id);
+                        setSwipedId(null);
+                      }}
+                      className="w-16 bg-blue-500 text-white flex flex-col items-center justify-center text-xs gap-1"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Reset UI
+                    </button>
+                    <button
+                      onClick={() => {
                         clearMessages(chat.id);
                         removeChat(chat.id);
                         setSwipedId(null);
                       }}
-                      className="w-20 bg-destructive text-destructive-foreground flex flex-col items-center justify-center text-xs gap-1"
+                      className="w-16 bg-destructive text-destructive-foreground flex flex-col items-center justify-center text-xs gap-1"
                     >
                       <Trash2 className="h-4 w-4" />
                       Delete

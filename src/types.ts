@@ -18,20 +18,24 @@ export interface Agent {
 export interface ChatTemplate {
   id: string;
   name: string;
-  html: string;
-  enabled: boolean;
+  description: string;
+  css: string;
 }
 
 export interface Chat {
   id: string;
   agentId: string;
-  title: string;
   icon: string;
+  title: string;
   lastMessage: string;
   lastMessageTime: number;
   unread: boolean;
-  templates: ChatTemplate[];
+  customHtml: string;
   contextPrompt: string;
+  memoryEnabled: boolean;
+  memoryPrompt: string;
+  installedTemplates: ChatTemplate[];
+  enabledTemplateIds: string[];
 }
 
 export interface Message {
@@ -40,6 +44,7 @@ export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: number;
+  clientMessageId?: string;
   isTemplate?: boolean;
   templateData?: string;
 }
