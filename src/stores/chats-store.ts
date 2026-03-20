@@ -25,6 +25,7 @@ interface ChatsState {
   createChat: (data: Pick<Chat, "agentId" | "icon" | "title">) => string;
   updateChat: (id: string, data: Partial<Omit<Chat, "id">>) => void;
   removeChat: (id: string) => void;
+  removeTemplateFromChats: (templateId: string) => void;
   getChat: (id: string) => Chat | undefined;
   resetChatUI: (id: string) => void;
 }
@@ -61,6 +62,18 @@ export const useChatsStore = create<ChatsState>()(
 
       removeChat: (id) =>
         set((s) => ({ chats: s.chats.filter((c) => c.id !== id) })),
+
+      removeTemplateFromChats: (templateId) =>
+        set((s) => ({
+          chats: s.chats.map((chat) =>
+            chat.enabledTemplateIds.includes(templateId)
+              ? {
+                  ...chat,
+                  enabledTemplateIds: chat.enabledTemplateIds.filter((id) => id !== templateId),
+                }
+              : chat
+          ),
+        })),
 
       getChat: (id) => get().chats.find((c) => c.id === id),
 

@@ -66,6 +66,7 @@ interface ConfigState {
   updateApiKey: (id: string, data: Partial<Omit<ApiKeyEntry, "id">>) => void;
   removeApiKey: (id: string) => void;
   installTemplate: (template: ChatTemplate) => void;
+  removeTemplate: (id: string) => void;
   setDefaultModel: (model: string) => void;
 }
 
@@ -102,6 +103,11 @@ export const useConfigStore = create<ConfigState>()(
                 entry.id === template.id ? normalizeTemplate(template) : entry
               )
             : [...s.installedTemplates, normalizeTemplate(template)],
+        })),
+
+      removeTemplate: (id) =>
+        set((s) => ({
+          installedTemplates: s.installedTemplates.filter((template) => template.id !== id),
         })),
 
       setDefaultModel: (model) => set({ defaultModel: model }),

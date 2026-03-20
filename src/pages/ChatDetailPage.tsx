@@ -17,6 +17,12 @@ interface GuestPayload {
   templateData?: ChatTemplate;
 }
 
+interface TemplateMenuState {
+  template: ChatTemplate;
+  x: number;
+  y: number;
+}
+
 function areTemplateListsEqual(a: ChatTemplate[], b: ChatTemplate[]) {
   if (a.length !== b.length) return false;
 
@@ -43,9 +49,9 @@ function getPluginStorageKey(chatId: string) {
 export function ChatDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getChat, updateChat } = useChatsStore();
+  const { getChat, updateChat, removeTemplateFromChats } = useChatsStore();
   const { getAgent } = useAgentsStore();
-  const { apiKeys, defaultModel, installedTemplates, installTemplate } = useConfigStore();
+  const { apiKeys, defaultModel, installedTemplates, installTemplate, removeTemplate } = useConfigStore();
   const { getMessages, addMessage, updateMessage } = useMessagesStore();
 
   const chat = getChat(id || "");
@@ -59,6 +65,9 @@ export function ChatDetailPage() {
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [pendingTemplateInstall, setPendingTemplateInstall] = useState<ChatTemplate | null>(null);
+  const [templateMenu, setTemplateMenu] = useState<TemplateMenuState | null>(null);
+  const [pendingTemplateDelete, setPendingTemplateDelete] = useState<ChatTemplate | null>(null);
+  const longPressTimeoutRef = useRef<number | null>(null);
 
   const activeTemplates = useMemo(() => {
     if (!chat) return [];
@@ -205,6 +214,16 @@ export function ChatDetailPage() {
     setShowTemplatePanel(true);
   }, [handleInstallTemplate, pendingTemplateInstall]);
 
+  const handleDeleteTemplate = useCallback(
+    (template: ChatTemplate) => {
+      removeTemplate(template.id);
+      removeTemplateFromChats(template.id);
+      setPendingTemplateDelete(null);
+      setTemplateMenu(null);
+    },
+    [removeTemplate, removeTemplateFromChats]
+  );
+
   const updateEnabledTemplates = useCallback(
     (templateId: string, enabled: boolean) => {
       if (!id || !chat) return;
@@ -217,6 +236,30 @@ export function ChatDetailPage() {
     },
     [chat, id, updateChat]
   );
+
+  const openTemplateMenu = useCallback((template: ChatTemplate, x: number, y: number) => {
+    setTemplateMenu({ template, x, y });
+  }, []);
+
+  const clearLongPressTimeout = useCallback(() => {
+    if (longPressTimeoutRef.current) {
+      window.clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!templateMenu) return;
+
+    function handlePointerDown() {
+      setTemplateMenu(null);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [templateMenu]);
 
   const handleSendMessage = useCallback(
     async (text: string, clientMessageId?: string) => {
@@ -397,11 +440,12 @@ export function ChatDetailPage() {
 
   useEffect(() => {
     return () => {
+      clearLongPressTimeout();
       if (abortRef.current) {
         abortRef.current.abort();
       }
     };
-  }, []);
+  }, [clearLongPressTimeout]);
 
   if (!chat || !agent || !id) {
     return (
@@ -509,26 +553,72 @@ export function ChatDetailPage() {
                   No templates installed yet. Send `HTML`, `HTML1`, `HTML2`, or `HTML3` in the chat to generate test templates.
                 </div>
               ) : (
-                installedTemplates.map((template) => {
-                  const enabled = chat.enabledTemplateIds.includes(template.id);
-                  return (
-                    <label key={template.id} className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={(event) => updateEnabledTemplates(template.id, event.target.checked)}
-                        className="mt-1"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium">{template.name}</div>
-                        <div className="text-xs text-muted-foreground">{template.description}</div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {installedTemplates.map((template) => {
+                    const enabled = chat.enabledTemplateIds.includes(template.id);
+                    return (
+                      <div
+                        key={template.id}
+                        className={`relative aspect-square rounded-xl border p-3 select-none cursor-pointer transition-colors ${enabled ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          openTemplateMenu(template, event.clientX, event.clientY);
+                        }}
+                        onTouchStart={(event) => {
+                          clearLongPressTimeout();
+                          const touch = event.touches[0];
+                          if (!touch) return;
+                          longPressTimeoutRef.current = window.setTimeout(() => {
+                            openTemplateMenu(template, touch.clientX, touch.clientY);
+                            longPressTimeoutRef.current = null;
+                          }, 450);
+                        }}
+                        onTouchEnd={clearLongPressTimeout}
+                        onTouchCancel={clearLongPressTimeout}
+                        onClick={() => {
+                          setTemplateMenu(null);
+                          updateEnabledTemplates(template.id, !enabled);
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={(event) => updateEnabledTemplates(template.id, event.target.checked)}
+                          onClick={(event) => event.stopPropagation()}
+                          className="absolute left-3 top-3"
+                        />
+                        <div className="h-full pt-7 flex flex-col">
+                          <div className="text-sm font-medium leading-tight line-clamp-2">{template.name}</div>
+                          <div className="mt-2 text-[11px] text-muted-foreground leading-snug line-clamp-4 flex-1">
+                            {template.description}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-2">Right click / hold</div>
+                        </div>
                       </div>
-                    </label>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {templateMenu && (
+        <div
+          className="fixed z-30 min-w-[160px] rounded-lg border border-border bg-card shadow-xl p-1"
+          style={{ left: Math.max(12, templateMenu.x - 140), top: Math.max(12, templateMenu.y - 12) }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              setPendingTemplateDelete(templateMenu.template);
+              setTemplateMenu(null);
+            }}
+            className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent"
+          >
+            Delete template
+          </button>
         </div>
       )}
 
@@ -555,6 +645,35 @@ export function ChatDetailPage() {
                 className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium"
               >
                 Install
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingTemplateDelete && (
+        <div className="absolute inset-0 z-30 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-xl p-4 space-y-4">
+            <div>
+              <div className="text-sm font-semibold">Delete template?</div>
+              <div className="text-sm text-muted-foreground mt-1">`{pendingTemplateDelete.name}` will be removed globally and disabled in every chat.</div>
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <div className="text-sm font-medium">{pendingTemplateDelete.name}</div>
+              <div className="text-xs text-muted-foreground mt-1">{pendingTemplateDelete.description}</div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingTemplateDelete(null)}
+                className="px-3 py-2 rounded-md border border-border text-sm hover:bg-accent"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteTemplate(pendingTemplateDelete)}
+                className="px-3 py-2 rounded-md bg-destructive text-destructive-foreground text-sm font-medium"
+              >
+                Delete
               </button>
             </div>
           </div>

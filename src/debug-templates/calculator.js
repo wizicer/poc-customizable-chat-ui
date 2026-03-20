@@ -14,90 +14,91 @@ function evaluateExpression(input) {
   try {
     const result = Function(`return (${expression})`)();
     if (typeof result !== 'number' || !Number.isFinite(result)) return null;
-    return `${expression} = ${result}`;
+    return { expression, result };
   } catch {
     return null;
   }
 }
 
+function createCalculatorMarkup(text) {
+  const evaluated = evaluateExpression(text);
+  if (!evaluated) return text;
+  const { expression, result } = evaluated;
+  const encoded = encodeURIComponent(expression);
+  return `
+    <div class="calculator-bubble" data-calculator-root="true" data-expression="${encoded}">
+      <div class="calculator-expression">${expression}=</div>
+      <div class="calculator-display" data-calculator-display="true">${result}</div>
+      <div class="calculator-keypad">
+        <div class="calculator-row">
+          <button class="calculator-key" data-calculator-value="7">7</button>
+          <button class="calculator-key" data-calculator-value="8">8</button>
+          <button class="calculator-key" data-calculator-value="9">9</button>
+          <button class="calculator-key operator" data-calculator-value="/">/</button>
+        </div>
+        <div class="calculator-row">
+          <button class="calculator-key" data-calculator-value="4">4</button>
+          <button class="calculator-key" data-calculator-value="5">5</button>
+          <button class="calculator-key" data-calculator-value="6">6</button>
+          <button class="calculator-key operator" data-calculator-value="*">*</button>
+        </div>
+        <div class="calculator-row">
+          <button class="calculator-key" data-calculator-value="1">1</button>
+          <button class="calculator-key" data-calculator-value="2">2</button>
+          <button class="calculator-key" data-calculator-value="3">3</button>
+          <button class="calculator-key operator" data-calculator-value="-">-</button>
+        </div>
+        <div class="calculator-row">
+          <button class="calculator-key" data-calculator-value="0">0</button>
+          <button class="calculator-key" data-calculator-value="(">(</button>
+          <button class="calculator-key" data-calculator-value=")">)</button>
+          <button class="calculator-key operator" data-calculator-value="+">+</button>
+        </div>
+        <div class="calculator-row">
+          <button class="calculator-key" data-calculator-value=".">.</button>
+          <button class="calculator-key" data-calculator-value="%">%</button>
+          <button class="calculator-key operator" data-calculator-action="clear">C</button>
+          <button class="calculator-key equal" data-calculator-action="solve">=</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 window.ChatAPI.addFilter('render:text', (text) => {
-  const calculated = evaluateExpression(text);
-  if (!calculated) return text;
-  return `${text}\n${calculated}`;
+  return createCalculatorMarkup(text);
 });
 
 window.ChatAPI.on('core:mounted', () => {
-  const topAnchor = document.getElementById('top-injection-anchor');
-  if (topAnchor && !document.getElementById('calculator-chip')) {
-    const chip = document.createElement('div');
-    chip.id = 'calculator-chip';
-    chip.className = 'calculator-chip';
-    chip.textContent = 'Calculator template active';
-    topAnchor.appendChild(chip);
-  }
-
-  const bottomAnchor = document.getElementById('bottom-injection-anchor');
-  if (bottomAnchor && !document.getElementById('calculator-panel')) {
-    const panel = document.createElement('div');
-    panel.id = 'calculator-panel';
-    panel.className = 'calculator-panel';
-    panel.innerHTML = `
-      <div class="calculator-display" id="calculator-display">0</div>
-      <div class="calculator-row">
-        <button class="calculator-key">7</button>
-        <button class="calculator-key">8</button>
-        <button class="calculator-key">9</button>
-        <button class="calculator-key operator">/</button>
-      </div>
-      <div class="calculator-row">
-        <button class="calculator-key">4</button>
-        <button class="calculator-key">5</button>
-        <button class="calculator-key">6</button>
-        <button class="calculator-key operator">*</button>
-      </div>
-      <div class="calculator-row">
-        <button class="calculator-key">1</button>
-        <button class="calculator-key">2</button>
-        <button class="calculator-key">3</button>
-        <button class="calculator-key operator">-</button>
-      </div>
-      <div class="calculator-row">
-        <button class="calculator-key">0</button>
-        <button class="calculator-key">(</button>
-        <button class="calculator-key">)</button>
-        <button class="calculator-key operator">+</button>
-      </div>
-      <div class="calculator-row">
-        <button class="calculator-key">.</button>
-        <button class="calculator-key">%</button>
-        <button class="calculator-key operator" data-action="clear">C</button>
-        <button class="calculator-key equal" data-action="send">=</button>
-      </div>
-    `;
-
-    const display = panel.querySelector('#calculator-display');
-    let value = '';
-
-    panel.addEventListener('click', (event) => {
-      const button = event.target.closest('button');
-      if (!button) return;
-      const action = button.dataset.action;
-      if (action === 'clear') {
-        value = '';
-        display.textContent = '0';
-        return;
-      }
-      if (action === 'send') {
-        if (!value) return;
-        window.ChatAPI.sendToHost('sendMessage', { text: `${value}=` });
-        value = '';
-        display.textContent = '0';
-        return;
-      }
-      value += button.textContent || '';
-      display.textContent = value;
-    });
-
-    bottomAnchor.appendChild(panel);
-  }
+  if (window.__calculatorBubbleHandlerInstalled) return;
+  window.__calculatorBubbleHandlerInstalled = true;
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-calculator-value], [data-calculator-action]');
+    if (!button) return;
+    const root = button.closest('[data-calculator-root="true"]');
+    if (!root) return;
+    const display = root.querySelector('[data-calculator-display="true"]');
+    if (!display) return;
+    const currentExpression = decodeURIComponent(root.dataset.expression || '');
+    if (button.dataset.calculatorAction === 'clear') {
+      root.dataset.expression = '';
+      display.textContent = '0';
+      const expressionNode = root.querySelector('.calculator-expression');
+      if (expressionNode) expressionNode.textContent = '0=';
+      return;
+    }
+    if (button.dataset.calculatorAction === 'solve') {
+      const next = evaluateExpression(`${currentExpression}=`);
+      display.textContent = next ? String(next.result) : 'Error';
+      const expressionNode = root.querySelector('.calculator-expression');
+      if (expressionNode) expressionNode.textContent = `${currentExpression || '0'}=`;
+      return;
+    }
+    const nextExpression = `${currentExpression}${button.dataset.calculatorValue || ''}`;
+    root.dataset.expression = encodeURIComponent(nextExpression);
+    const expressionNode = root.querySelector('.calculator-expression');
+    if (expressionNode) expressionNode.textContent = `${nextExpression}=`;
+    const next = evaluateExpression(`${nextExpression}=`);
+    display.textContent = next ? String(next.result) : nextExpression || '0';
+  });
 });
