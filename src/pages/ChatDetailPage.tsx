@@ -108,6 +108,7 @@ export function ChatDetailPage() {
         role: message.role,
         content: message.content,
         timestamp: message.timestamp,
+        senderName: message.senderName,
         isTemplate: message.isTemplate,
         templateData: message.templateData,
       })),
@@ -175,12 +176,13 @@ export function ChatDetailPage() {
           role: "assistant",
           content: assistantMessage.content,
           timestamp: assistantMessage.timestamp,
+          senderName: assistantMessage.senderName || agent?.name || "Assistant",
           isTemplate: assistantMessage.isTemplate,
           templateData: assistantMessage.templateData,
         },
       });
     },
-    [addMessage, id, postToIframe, updateChat]
+    [addMessage, agent?.name, id, postToIframe, updateChat]
   );
 
   const handleInstallTemplate = useCallback(
@@ -224,7 +226,7 @@ export function ChatDetailPage() {
       if (!trimmed) return;
 
       log("handleSendMessage", { text: trimmed, clientMessageId, chatId: id });
-      const userMessage = addMessage(id, "user", trimmed, { clientMessageId });
+      const userMessage = addMessage(id, "user", trimmed, { clientMessageId, senderName: "You" });
       updateChat(id, {
         lastMessage: trimmed,
         lastMessageTime: Date.now(),
@@ -238,6 +240,7 @@ export function ChatDetailPage() {
           role: "user",
           content: trimmed,
           timestamp: userMessage.timestamp,
+          senderName: userMessage.senderName || "You",
         },
       });
 
@@ -286,7 +289,7 @@ export function ChatDetailPage() {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const assistantMessage = addMessage(id, "assistant", "");
+      const assistantMessage = addMessage(id, "assistant", "", { senderName: agent.name });
       postToIframe("streamStart", {});
 
       await streamChatCompletion(
@@ -316,6 +319,7 @@ export function ChatDetailPage() {
                 role: "assistant",
                 content: finalText,
                 timestamp: Date.now(),
+                senderName: agent.name,
               },
             });
           },
@@ -336,6 +340,7 @@ export function ChatDetailPage() {
                 role: "assistant",
                 content,
                 timestamp: Date.now(),
+                senderName: agent.name,
               },
             });
           },
@@ -501,7 +506,7 @@ export function ChatDetailPage() {
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
               {installedTemplates.length === 0 ? (
                 <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-3">
-                  No templates installed yet. Send `HTML`, `HTML1`, or `HTML2` in the chat to generate test templates.
+                  No templates installed yet. Send `HTML`, `HTML1`, `HTML2`, or `HTML3` in the chat to generate test templates.
                 </div>
               ) : (
                 installedTemplates.map((template) => {

@@ -47,6 +47,7 @@ export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: number;
+  senderName?: string;
   clientMessageId?: string;
   isTemplate?: boolean;
   templateData?: string;

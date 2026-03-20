@@ -5,11 +5,13 @@ import statusRibbonCss from "./status-ribbon.css?raw";
 import statusRibbonJs from "./status-ribbon.js?raw";
 import nightGlassCss from "./night-glass.css?raw";
 import nightGlassJs from "./night-glass.js?raw";
+import calculatorCss from "./calculator.css?raw";
+import calculatorJs from "./calculator.js?raw";
 
 export const DEBUG_HTML_TEMPLATE: ChatTemplate = {
   id: "debug-html-template",
-  name: "Reference Theme Plugin",
-  description: "Filter + UI injection plugin, following the reference plugin architecture.",
+  name: "Starter Template Plugin",
+  description: "Minimal starter template with a simple host action button for future prompting experiments.",
   css: referenceThemeCss,
   js: referenceThemeJs,
 };
@@ -30,8 +32,17 @@ export const DEBUG_HTML_TEMPLATE_2: ChatTemplate = {
   js: nightGlassJs,
 };
 
+export const DEBUG_HTML_TEMPLATE_3: ChatTemplate = {
+  id: "debug-html-template-3",
+  name: "Calculator Plugin",
+  description: "Adds a calculator panel and evaluates messages that end with '=' using safe arithmetic expressions.",
+  css: calculatorCss,
+  js: calculatorJs,
+};
+
 export const DEBUG_TEMPLATE_COMMANDS: Record<string, ChatTemplate> = {
   HTML: DEBUG_HTML_TEMPLATE,
   HTML1: DEBUG_HTML_TEMPLATE_1,
   HTML2: DEBUG_HTML_TEMPLATE_2,
+  HTML3: DEBUG_HTML_TEMPLATE_3,
 };

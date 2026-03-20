@@ -35,6 +35,12 @@
       flex-direction: column;
       gap: 4px;
     }
+    .msg-sender {
+      font-size: 11px;
+      color: #64748b;
+      padding: 0 6px;
+      font-weight: 600;
+    }
     .msg.user {
       align-self: flex-end;
       align-items: flex-end;
@@ -251,6 +257,7 @@
         }
       });
       window.ChatAPI.emit("core:mounted", {});
+      rerenderAllMessages();
       log("plugins loaded", activePlugins.map((plugin) => plugin.id));
     }
 
@@ -262,6 +269,37 @@
         '<div class="template-description">' + escapeHtml(templateData.description || "Tap to install this template") + '</div>',
         '</div>'
       ].join("");
+    }
+
+    function getDefaultSenderName(message) {
+      if (message.role === "user") return "You";
+      if (message.role === "assistant") return "Assistant";
+      return "System";
+    }
+
+    function renderStandardMessageContent(node, message) {
+      node.dataset.originalContent = message.content || "";
+      const filtered = window.ChatAPI.applyFilter("render:text", message.content || "");
+      const senderName = escapeHtml(message.senderName || getDefaultSenderName(message));
+      node.innerHTML = [
+        '<div class="msg-sender">' + senderName + '</div>',
+        '<div class="msg-bubble">' + filtered + '</div>',
+        '<div class="msg-time">' + formatTime(message.timestamp) + '</div>'
+      ].join("");
+    }
+
+    function rerenderAllMessages() {
+      Array.from(messageList.children).forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+        if (node.dataset.templateCard === "true") return;
+        if (node.dataset.streaming === "true") return;
+        renderStandardMessageContent(node, {
+          role: node.dataset.role || "assistant",
+          content: node.dataset.originalContent || "",
+          timestamp: Number(node.dataset.timestamp || Date.now()),
+          senderName: node.dataset.senderName || "",
+        });
+      });
     }
 
     function renderMessage(message) {
@@ -276,6 +314,9 @@
       node.className = "msg " + message.role + (message.pending ? " pending" : "");
       if (message.id) node.dataset.id = message.id;
       if (message.clientMessageId) node.dataset.clientId = message.clientMessageId;
+      node.dataset.role = message.role;
+      node.dataset.timestamp = String(message.timestamp || Date.now());
+      node.dataset.senderName = message.senderName || getDefaultSenderName(message);
 
       if (message.isTemplate && message.templateData) {
         let parsed = null;
@@ -284,17 +325,16 @@
         } catch (error) {
           log("template parse error", error);
         }
+        delete node.dataset.originalContent;
+        node.dataset.templateCard = "true";
         node.innerHTML = parsed ? createTemplateMarkup(parsed) : '<div class="msg-bubble">' + escapeHtml(message.content) + '</div>';
         node.onclick = parsed
           ? () => window.ChatAPI.sendToHost("requestInstallTemplate", { templateData: parsed })
           : null;
       } else {
+        node.dataset.templateCard = "false";
         node.onclick = null;
-        const filtered = window.ChatAPI.applyFilter("render:text", message.content);
-        node.innerHTML = [
-          '<div class="msg-bubble">' + filtered + '</div>',
-          '<div class="msg-time">' + formatTime(message.timestamp) + '</div>'
-        ].join("");
+        renderStandardMessageContent(node, message);
       }
 
       if (!existing) {
@@ -366,13 +406,17 @@
         typingIndicator.style.display = "block";
         streamElement = document.createElement("div");
         streamElement.className = "msg assistant";
-        streamElement.innerHTML = '<div class="msg-bubble"></div>';
+        streamElement.dataset.streaming = "true";
+        streamElement.dataset.role = "assistant";
+        streamElement.dataset.senderName = "Assistant";
+        streamElement.innerHTML = '<div class="msg-sender">Assistant</div><div class="msg-bubble"></div>';
         messageList.appendChild(streamElement);
         scrollToBottom();
       }
 
       if (data.action === "streamToken" && streamElement && data.payload?.token) {
         streamText += data.payload.token;
+        streamElement.dataset.originalContent = streamText;
         const bubble = streamElement.querySelector(".msg-bubble");
         if (bubble) {
           bubble.innerHTML = window.ChatAPI.applyFilter("render:text", streamText);

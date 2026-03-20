@@ -1,0 +1,7 @@
+.calculator-chip { margin: 0 16px 12px; padding: 8px 12px; border-radius: 999px; background: rgba(15, 23, 42, 0.08); color: #334155; font-size: 12px; font-weight: 600; width: fit-content; }
+.calculator-panel { margin: 0 16px 12px; padding: 12px; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 10px; }
+.calculator-display { padding: 10px 12px; border-radius: 12px; background: #0f172a; color: #f8fafc; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; min-height: 42px; }
+.calculator-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.calculator-key { border: none; border-radius: 12px; padding: 10px 0; background: #e2e8f0; color: #0f172a; font-weight: 700; cursor: pointer; }
+.calculator-key.operator { background: #c7d2fe; color: #312e81; }
+.calculator-key.equal { background: #2563eb; color: white; }
