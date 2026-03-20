@@ -9,6 +9,8 @@ import calculatorCss from "./calculator.css?raw";
 import calculatorJs from "./calculator.js?raw";
 import messageSplitterCss from "./message-splitter.css?raw";
 import messageSplitterJs from "./message-splitter.js?raw";
+import ttsReaderCss from "./tts-reader.css?raw";
+import ttsReaderJs from "./tts-reader.js?raw";
 
 export const DEBUG_HTML_TEMPLATE: ChatTemplate = {
   id: "debug-html-template",
@@ -50,10 +52,19 @@ export const DEBUG_HTML_TEMPLATE_4: ChatTemplate = {
   js: messageSplitterJs,
 };
 
+export const DEBUG_HTML_TEMPLATE_5: ChatTemplate = {
+  id: "debug-html-template-5",
+  name: "TTS Read-Aloud Plugin",
+  description: "Adds a speaker icon to assistant messages. Click to read the text aloud with auto language detection.",
+  css: ttsReaderCss,
+  js: ttsReaderJs,
+};
+
 export const DEBUG_TEMPLATE_COMMANDS: Record<string, ChatTemplate> = {
   HTML: DEBUG_HTML_TEMPLATE,
   HTML1: DEBUG_HTML_TEMPLATE_1,
   HTML2: DEBUG_HTML_TEMPLATE_2,
   HTML3: DEBUG_HTML_TEMPLATE_3,
   HTML4: DEBUG_HTML_TEMPLATE_4,
+  HTML5: DEBUG_HTML_TEMPLATE_5,
 };

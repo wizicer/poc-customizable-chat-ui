@@ -335,6 +335,8 @@
       if (!existing) {
         messageList.appendChild(node);
       }
+      // Allow plugins to customize rendered message nodes (e.g. add TTS buttons)
+      window.ChatAPI.emit("message:rendered", { node, message });
       return node;
     }
 
