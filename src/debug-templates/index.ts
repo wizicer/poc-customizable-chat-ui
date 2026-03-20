@@ -7,6 +7,8 @@ import nightGlassCss from "./night-glass.css?raw";
 import nightGlassJs from "./night-glass.js?raw";
 import calculatorCss from "./calculator.css?raw";
 import calculatorJs from "./calculator.js?raw";
+import messageSplitterCss from "./message-splitter.css?raw";
+import messageSplitterJs from "./message-splitter.js?raw";
 
 export const DEBUG_HTML_TEMPLATE: ChatTemplate = {
   id: "debug-html-template",
@@ -40,9 +42,18 @@ export const DEBUG_HTML_TEMPLATE_3: ChatTemplate = {
   js: calculatorJs,
 };
 
+export const DEBUG_HTML_TEMPLATE_4: ChatTemplate = {
+  id: "debug-html-template-4",
+  name: "Message Splitter Plugin",
+  description: "Splits long assistant messages at \\n---\\n boundaries and displays each segment as a visually separate block.",
+  css: messageSplitterCss,
+  js: messageSplitterJs,
+};
+
 export const DEBUG_TEMPLATE_COMMANDS: Record<string, ChatTemplate> = {
   HTML: DEBUG_HTML_TEMPLATE,
   HTML1: DEBUG_HTML_TEMPLATE_1,
   HTML2: DEBUG_HTML_TEMPLATE_2,
   HTML3: DEBUG_HTML_TEMPLATE_3,
+  HTML4: DEBUG_HTML_TEMPLATE_4,
 };

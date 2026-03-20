@@ -251,7 +251,7 @@
       activePlugins.forEach((plugin) => {
         if (!plugin.js) return;
         try {
-          window.eval(plugin.js);
+          window.eval(plugin.js + '\n//# sourceURL=' + plugin.id + '.js');
         } catch (error) {
           log("plugin eval error", plugin.id, error);
         }
