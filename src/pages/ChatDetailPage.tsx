@@ -559,7 +559,7 @@ export function ChatDetailPage() {
                     return (
                       <div
                         key={template.id}
-                        className={`relative aspect-square rounded-xl border p-3 select-none cursor-pointer transition-colors ${enabled ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
+                        className={`relative h-16 rounded-xl border p-2 select-none cursor-pointer transition-colors ${enabled ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
                         onContextMenu={(event) => {
                           event.preventDefault();
                           openTemplateMenu(template, event.clientX, event.clientY);
@@ -580,19 +580,11 @@ export function ChatDetailPage() {
                           updateEnabledTemplates(template.id, !enabled);
                         }}
                       >
-                        <input
-                          type="checkbox"
-                          checked={enabled}
-                          onChange={(event) => updateEnabledTemplates(template.id, event.target.checked)}
-                          onClick={(event) => event.stopPropagation()}
-                          className="absolute left-3 top-3"
-                        />
-                        <div className="h-full pt-7 flex flex-col">
-                          <div className="text-sm font-medium leading-tight line-clamp-2">{template.name}</div>
-                          <div className="mt-2 text-[11px] text-muted-foreground leading-snug line-clamp-4 flex-1">
+                        <div className="h-full flex flex-col overflow-hidden">
+                          <div className="text-[11px] font-bold leading-tight truncate">{template.name}</div>
+                          <div className="mt-1 text-[11px] text-muted-foreground leading-snug line-clamp-2 flex-1">
                             {template.description}
                           </div>
-                          <div className="text-[10px] text-muted-foreground mt-2">Right click / hold</div>
                         </div>
                       </div>
                     );
