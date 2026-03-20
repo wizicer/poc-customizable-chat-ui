@@ -24,7 +24,7 @@ export default function App() {
   }, [theme]);
 
   return (
-    <BrowserRouter basename={import.meta.env.PROD ? "/poc-customizable-chat-ui" : ""}>
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/+$/, "")}>
       <Routes>
         <Route element={<ResponsiveLayout />}>
           <Route path="/chats" element={<ChatsPage />} />

@@ -39,7 +39,7 @@ function areTemplateListsEqual(a: ChatTemplate[], b: ChatTemplate[]) {
 }
 
 function createGuestUrl(chatId: string, reloadKey: number) {
-  return `/guest-chat.html?chatId=${encodeURIComponent(chatId)}&reload=${reloadKey}`;
+  return `${import.meta.env.BASE_URL}guest-chat.html?chatId=${encodeURIComponent(chatId)}&reload=${reloadKey}`;
 }
 
 function getPluginStorageKey(chatId: string) {
