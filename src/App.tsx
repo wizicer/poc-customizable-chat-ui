@@ -24,7 +24,7 @@ export default function App() {
   }, [theme]);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/poc-customizable-chat-ui">
       <Routes>
         <Route element={<ResponsiveLayout />}>
           <Route path="/chats" element={<ChatsPage />} />
