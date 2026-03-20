@@ -1,29 +1,29 @@
 // Message Splitter Plugin
 // Splits long assistant messages at "\n---" boundaries and renders each
-// segment as a visually separate block inside the same bubble.
+// segment as a separate message bubble using the transform:message filter.
 
-console.log('[message-splitter] plugin loaded');
+window.ChatAPI.addFilter('transform:message', function (messages) {
+  var result = [];
+  messages.forEach(function (message) {
+    var content = message.content || '';
+    // Only split assistant messages that contain the separator
+    if (message.role !== 'assistant' || content.indexOf('\n---') === -1) {
+      result.push(message);
+      return;
+    }
 
-window.ChatAPI.addFilter('render:text', function (text) {
-  console.log('[message-splitter] render:text', text);
-  var raw = String(text ?? '');
-
-  if (raw.indexOf('<br />---') === -1) {
-    return text;
-  }
-
-  console.log('[message-splitter] splitting message, segments:', raw.split('<br />---').length);
-
-  var segments = raw.split('<br />---');
-  return segments
-    .map(function (segment) {
+    var segments = content.split('\n---');
+    segments.forEach(function (segment, index) {
       var trimmed = segment.trim();
-      if (!trimmed) return '';
-      var div = document.createElement('div');
-      div.textContent = trimmed;
-      var escaped = div.innerHTML.replace(/\n/g, '<br />');
-      return '<div class="splitter-segment">' + escaped + '</div>';
-    })
-    .filter(Boolean)
-    .join('');
+      if (!trimmed) return;
+      result.push({
+        id: message.id ? message.id + ':split-' + index : undefined,
+        role: message.role,
+        content: trimmed,
+        timestamp: message.timestamp,
+        senderName: message.senderName,
+      });
+    });
+  });
+  return result;
 });

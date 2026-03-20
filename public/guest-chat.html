@@ -168,6 +168,7 @@
     let streamText = "";
     let isStreaming = false;
     let activePlugins = [];
+    let sourceMessages = [];
 
     function log() {
       console.debug("[guest-chat]", ...arguments);
@@ -289,20 +290,14 @@
     }
 
     function rerenderAllMessages() {
-      Array.from(messageList.children).forEach((node) => {
-        if (!(node instanceof HTMLElement)) return;
-        if (node.dataset.templateCard === "true") return;
-        if (node.dataset.streaming === "true") return;
-        renderStandardMessageContent(node, {
-          role: node.dataset.role || "assistant",
-          content: node.dataset.originalContent || "",
-          timestamp: Number(node.dataset.timestamp || Date.now()),
-          senderName: node.dataset.senderName || "",
-        });
-      });
+      // Fully rebuild DOM from source messages so transform:message
+      // filters (e.g. message splitter) can split or combine correctly.
+      messageList.innerHTML = "";
+      sourceMessages.forEach(renderMessage);
+      scrollToBottom();
     }
 
-    function renderMessage(message) {
+    function renderSingleMessage(message) {
       const existingByClientId = message.clientMessageId
         ? messageList.querySelector('[data-client-id="' + CSS.escape(message.clientMessageId) + '"]')
         : null;
@@ -340,14 +335,27 @@
       if (!existing) {
         messageList.appendChild(node);
       }
-      scrollToBottom();
       return node;
+    }
+
+    function renderMessage(message) {
+      // Allow plugins to transform one message into multiple via transform:message filter.
+      // The filter receives a message and should return an array of message objects.
+      const transformed = window.ChatAPI.applyFilter("transform:message", [message]);
+      const messages = Array.isArray(transformed) ? transformed : [message];
+      let lastNode = null;
+      messages.forEach((msg) => {
+        lastNode = renderSingleMessage(msg);
+      });
+      scrollToBottom();
+      return lastNode;
     }
 
     function resetMessages(messages) {
       messageList.innerHTML = "";
       streamElement = null;
       streamText = "";
+      sourceMessages = messages.slice();
       messages.forEach(renderMessage);
       scrollToBottom();
     }
@@ -397,6 +405,7 @@
       }
 
       if (data.action === "appendMessage" && data.payload?.message) {
+        sourceMessages.push(data.payload.message);
         renderMessage(data.payload.message);
       }
 
@@ -429,6 +438,7 @@
         typingIndicator.style.display = "none";
         if (streamElement && data.payload?.message) {
           streamElement.remove();
+          sourceMessages.push(data.payload.message);
           renderMessage(data.payload.message);
         }
         streamElement = null;
@@ -443,12 +453,14 @@
           streamElement = null;
         }
         streamText = "";
-        renderMessage(data.payload?.message || {
+        const errorMsg = data.payload?.message || {
           id: String(Date.now()),
           role: "assistant",
           content: "Error: " + (data.payload?.error || "Unknown error"),
           timestamp: Date.now()
-        });
+        };
+        sourceMessages.push(errorMsg);
+        renderMessage(errorMsg);
       }
     });
 

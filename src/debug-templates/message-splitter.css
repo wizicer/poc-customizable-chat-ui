@@ -1,16 +1,1 @@
-/* Message Splitter: split by \n---\n */
-.msg.assistant .msg-bubble .splitter-segment {
-  padding: 10px 0;
-}
-
-.msg.assistant .msg-bubble .splitter-segment+.splitter-segment {
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.msg.assistant .msg-bubble .splitter-segment:first-child {
-  padding-top: 0;
-}
-
-.msg.assistant .msg-bubble .splitter-segment:last-child {
-  padding-bottom: 0;
-}
+/* Message Splitter: no custom styles needed — each segment renders as a standard message bubble */
